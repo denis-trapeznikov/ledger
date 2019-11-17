@@ -17,56 +17,74 @@
 //
 //------------------------------------------------------------------------------
 
+#include <algorithm>
+#include <functional>
 #include <type_traits>
 #include <utility>
 
 namespace fetch {
 namespace type_util {
 
-template <typename... Ts>
-struct Conjunction;
+template<class T> struct Box {
+	using type = T;
+};
+
+// Primary generic template introduced to compensate for fold-expressions missing from C++14.
+template <template<class...> class F, class... Args> struct LeftAccumulate;
+template <template<class...> class F, class... Args> using LeftAccumulateT = typename LeftAccumulate<F, Args...>::type;
+template <template<class...> class F, class... Args> constexpr auto LeftAccumulateV = LeftAccumulate<F, Args...>::value;
+
+template <template<class...> class F, class A0, class A1, class... As>
+struct LeftAccumulate<F, A0, A1, As...>: LeftAccumulate<F, F<A0, A1>, As...> {};
+
+template <template<class...> class F, class A0>
+struct LeftAccumulate<F, A0>: Box<A0> {};
+
+// Right fold.
+template <template<class...> class F, class... Args> struct RightAccumulate;
+template <template<class...> class F, class... Args> using RightAccumulateT = typename RightAccumulate<F, Args...>::type;
+template <template<class...> class F, class... Args> constexpr auto RightAccumulateV = RightAccumulate<F, Args...>::value;
+
+template <template<class...> class F, class A0, class A1, class... As>
+struct RightAccumulate<F, A0, A1, As...>: F<A0, RightAccumulateT<F, A1, As...>> {};
+
+template <template<class...> class F, class A0>
+struct RightAccumulate<F, A0>: Box<A0> {};
+
+
+// Simple static arithmetic definition.
+template<class Operator> struct LiftArithmetic {
+	template<class... Args> struct type {
+		static constexpr auto value = Operator{}(Args::value...);
+	};
+};
+
+// STL simple binary operators are very generic when specialized for void.
+template<template<class...> class StlOperator> using LiftStlArithmetic = LiftArithmetic<StlOperator<void>>;
+
+
+template<class... Ts>
+using Conjunction = LeftAccumulate<LiftStlArithmetic<std::logical_and>::template type, std::true_type, Ts...>;
 
 template <typename... Ts>
 static constexpr auto ConjunctionV = Conjunction<Ts...>::value;
 
-template <typename T, typename... Ts>
-struct Conjunction<T, Ts...>
-{
-  static constexpr bool value = T::value && ConjunctionV<Ts...>;
-};
-
-template <>
-struct Conjunction<>
-{
-  static constexpr bool value = true;
-};
-
 template <template <typename...> class F, typename... Ts>
 using All = Conjunction<F<Ts>...>;
+
 
 template <template <typename...> class F, typename... Ts>
 static constexpr auto AllV = All<F, Ts...>::value;
 
 template <typename... Ts>
-struct Disjunction;
+using Disjunction = LeftAccumulate<LiftStlArithmetic<std::logical_or>::template type, std::false_type, Ts...>;
 
 template <typename... Ts>
 static constexpr auto DisjunctionV = Disjunction<Ts...>::value;
 
-template <typename T, typename... Ts>
-struct Disjunction<T, Ts...>
-{
-  static constexpr bool value = T::value || DisjunctionV<Ts...>;
-};
-
-template <>
-struct Disjunction<>
-{
-  static constexpr bool value = false;
-};
-
 template <template <typename...> class F, typename... Ts>
 using Any = Disjunction<F<Ts>...>;
+
 
 template <template <typename...> class F, typename... Prefix>
 struct Bind
@@ -75,11 +93,13 @@ struct Bind
   using type = F<Prefix..., Args...>;
 };
 
+
 template <typename T, typename... Ts>
-using IsAnyOf = Any<Bind<std::is_same, T>::template type, Ts...>;
+using IsAnyOf = Any<std::is_same<T, Ts>...>;
 
 template <typename T, typename... Ts>
 static constexpr auto IsAnyOfV = IsAnyOf<T, Ts...>::value;
+
 
 template <typename T, template <typename...> class... Predicates>
 using SatisfiesAll = Conjunction<Predicates<T>...>;
@@ -87,14 +107,6 @@ using SatisfiesAll = Conjunction<Predicates<T>...>;
 template <typename T, template <typename...> class... Predicates>
 static constexpr bool SatisfiesAllV = SatisfiesAll<T, Predicates...>::value;
 
-template <typename F, typename... Args>
-struct IsNothrowInvocable
-{
-  static constexpr bool value = noexcept(std::declval<F>()(std::declval<Args>()...));
-};
-
-template <typename F, typename... Args>
-static constexpr auto IsNothrowInvocableV = IsNothrowInvocable<F, Args...>::value;
 
 template <typename F, typename... Args>
 struct InvokeResult
@@ -105,5 +117,39 @@ struct InvokeResult
 template <typename F, typename... Args>
 using InvokeResultT = typename InvokeResult<F, Args...>::type;
 
+template<class A, class B> struct Max<A, B>
+{
+	static constexpr auto value = std::max(A::value, B::value);
+};
+
+template<class A, class B> struct Min<A, B>
+{
+	static constexpr auto value = std::min(A::value, B::value);
+};
+
+namespace seq {
+
+template<class... Seqs> struct Concat;
+template<class... Seqs> using ConcatT = typename Concat<Seqs...>::type;
+
+template<class... Seqs> struct Concat: LeftAccumulate<ConcatT, Seqs...> {};
+
+template<template<class T, T...> class IntegerSequence, class T, T... seq1, T... seq2>
+struct Concat<IntegerSequence<T, seq1...>, IntegerSequence<T, seq2...>>: Box<IntegerSequence<T, seq1..., seq2...>> {};
+
+template<class T, template<T...> class Sequence, T... seq1, T... seq2>
+struct Concat<Sequence<seq1...>, Sequence<seq2...>>: Box<Sequence<seq1..., seq2...>> {};
+
+template<class F, class Sequence> struct LeftAccumulate;
+
+template<class F, template<class T, T...> class Seq, class T, T... seq> struct LeftAccumulatex<F, Seq<T, seq...>>: type_util::LeftAccumulate<F, Seq<T, seq>...> {};
+
+template<class Sequence> using Max = LeftAccumulate<type_util::Max, Sequence>;
+template<class Sequence> static constexpr auto MaxV = Max<Sequence>::value;
+
+template<class Sequence> using Min = LeftAccumulate<type_util::Min, Sequence>;
+template<class Sequence> static constexpr auto MinV = Min<Sequence>::value;
+
+}
 }  // namespace type_util
 }  // namespace fetch

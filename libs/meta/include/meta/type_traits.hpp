@@ -156,5 +156,16 @@ using IfIsNullPtr = EnableIf<IsNullPtr<T>, R>;
 template <typename T, typename R = void>
 using IfIsPod = EnableIf<IsPOD<T>, R>;
 
+template<class F, class... Args> class IsInvocable {
+	struct Yes {};
+	struct No {};
+	template<class F> static constexpr decltype(std::declval<F>(std::declval<Args>()...), Yes{}) Can(F &&f);
+	static constexpr No Can(...);
+public:
+	static constexpr bool value = std::is_same<decltype(Can(std::declval<F>())), Yes>::value;
+};
+
+template<class F, class... Args> static constexpr bool IsInvocableV = IsInvocable<F, Args...>::value;
+
 }  // namespace meta
 }  // namespace fetch

@@ -19,8 +19,14 @@
 
 #include "core/serializers/base_types.hpp"
 #include "core/serializers/main_serializer.hpp"
+#include "meta/slots.hpp"
+#include "meta/type_util.hpp"
 #include "vectorise/fixed_point/fixed_point.hpp"
+#include "vm/address.hpp"
 #include "vm/object.hpp"
+#include "vm/string.hpp"
+
+#include <bitset>
 
 namespace fetch {
 namespace vm {
@@ -37,6 +43,12 @@ union Primitive
   uint64_t ui64;
   float    f32;
   double   f64;
+
+  template<TypeId>
+  auto const &Ref() const noexcept;
+
+  template<TypeId>
+  auto &Ref() noexcept;
 
   template <typename T>
   auto Get() const noexcept;
@@ -420,13 +432,13 @@ struct Variant
   }
 
   template <typename T>
-  std::enable_if_t<IsPrimitive<T>::value, T> Get() const noexcept
+  constexpr std::enable_if_t<IsPrimitive<T>::value, T> Get() const noexcept
   {
     return primitive.Get<T>();
   }
 
   template <typename T>
-  std::enable_if_t<IsPtr<T>::value, T> Get() const noexcept
+  constexpr std::enable_if_t<IsPtr<T>::value, T> Get() const noexcept
   {
     return object;
   }
@@ -498,6 +510,88 @@ struct Variant
   }
 };
 using VariantArray = std::vector<Variant>;
+
+namespace detail_
+{
+
+template<TypeId type_id> struct IdToType: type_util::Box<Object> {};
+template<TypeId type_id> using IdToTypeT = typename IdToType<type_id>::type;
+
+template<> struct IdToType<TypeIds::Void>: type_util::Box<void> {};
+template<> struct IdToType<TypeIds::Bool>: type_util::Box<bool> {};
+template<> struct IdToType<TypeIds::Int8>: type_util::Box<int8_t> {};
+template<> struct IdToType<TypeIds::Int8>: type_util::Box<int8_t> {};
+template<> struct IdToType<TypeIds::Int16>: type_util::Box<int16_t> {};
+template<> struct IdToType<TypeIds::Int16>: type_util::Box<int16_t> {};
+template<> struct IdToType<TypeIds::Int32>: type_util::Box<int32_t> {};
+template<> struct IdToType<TypeIds::Int32>: type_util::Box<int32_t> {};
+template<> struct IdToType<TypeIds::Int64>: type_util::Box<int64_t> {};
+template<> struct IdToType<TypeIds::Int64>: type_util::Box<int64_t> {};
+template<> struct IdToType<TypeIds::Float>: type_util::Box<float> {};
+template<> struct IdToType<TypeIds::Float>: type_util::Box<double> {};
+template<> struct IdToType<TypeIds::Fixed32>: type_util::Box<fixed_point::fp32_t> {};
+template<> struct IdToType<TypeIds::Fixed64>: type_util::Box<fixed_point::fp64_t> {};
+template<> struct IdToType<TypeIds::String>: type_util::Box<String> {};
+template<> struct IdToType<TypeIds::Address>: type_util::Box<Address> {};
+
+template<class T> struct TypeToId: std::integral_constant<TypeId, TypeIds::NumReserved> {};
+template<class T> static constexpr auto TypeToIdV = TypeToId<T>::value;
+
+template<> struct TypeToId<void>: std::integral_constant<TypeId, TypeIds::Void> {};
+template<> struct TypeToId<bool>: std::integral_constant<TypeId, TypeIds::Bool> {};
+template<> struct TypeToId<int8_t>: std::integral_constant<TypeId, TypeIds::Int8> {};
+template<> struct TypeToId<int8_t>: std::integral_constant<TypeId, TypeIds::Int8> {};
+template<> struct TypeToId<int16_t>: std::integral_constant<TypeId, TypeIds::Int16> {};
+template<> struct TypeToId<int16_t>: std::integral_constant<TypeId, TypeIds::Int16> {};
+template<> struct TypeToId<int32_t>: std::integral_constant<TypeId, TypeIds::Int32> {};
+template<> struct TypeToId<int32_t>: std::integral_constant<TypeId, TypeIds::Int32> {};
+template<> struct TypeToId<int64_t>: std::integral_constant<TypeId, TypeIds::Int64> {};
+template<> struct TypeToId<int64_t>: std::integral_constant<TypeId, TypeIds::Int64> {};
+template<> struct TypeToId<float>: std::integral_constant<TypeId, TypeIds::Float> {};
+template<> struct TypeToId<double>: std::integral_constant<TypeId, TypeIds::Float> {};
+template<> struct TypeToId<fixed_point::fp32_t>: std::integral_constant<TypeId, TypeIds::Fixed32> {};
+template<> struct TypeToId<fixed_point::fp64_t>: std::integral_constant<TypeId, TypeIds::Fixed64> {};
+template<> struct TypeToId<String>: std::integral_constant<TypeId, TypeIds::String> {};
+template<> struct TypeToId<Address>: std::integral_constant<TypeId, TypeIds::Address> {};
+
+template<TypeId... type_ids> using TypeIdSeq = std::integer_sequence<TypeId, type_ids...>;
+
+template<class F, class RV, TypeId... type_ids> constexpr decltype(auto) SeqAccumulate(F &&f, RV init, TypeIdSeq<type_ids...>)
+{
+	return value_util::LeftAccumulate(std::forward<F>(f), init, type_ids...);
+}
+
+}
+
+template<TypeId type_id> struct VariantView
+{
+	using type = IdToTypeT<type_id>;
+
+	static constexpr type Get(Variant const &v) {
+		assert(v.type_id == type_id);
+		return v.Get<type>();
+	}
+
+	static constexpr void Set(Variant &v, type T) {
+		v.Assign(std::move(T), type_id);
+	}
+};
+
+template<TypeId... type_ids> using TypeIdSeq = detail_::TypeIdSeq<type_ids...>;
+
+template<class... IdSets, class F, class... Variants> constexpr ApplyFunctor(TypeId type_id, F &&f, Variants &&...variants)
+{
+	using IdSet = type_util::seq::ConcatT<IdSets...>;
+	static constexpr auto MaxId = type_util::seq::MaxV<IdSet>;
+	static constexpr auto elder_bit = sizeof(uint64_t) * 8;
+
+	static_assert(MaxId < elder_bit, "TypeId is too large currently");
+
+	static constexpr uint64_t mask = detail_::SeqAccumulate([](uint64_t accum, auto type_index) { return accum | 1ull << type_index; }, 0ull, IdSet{});
+	static constexpr std::bitset<static_cast<std::size_t>(MaxId)> type_id_filter(mask);
+
+	if(
+}
 
 struct TemplateParameter1 : Variant
 {

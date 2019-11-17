@@ -559,9 +559,9 @@ private:
   {
     auto old_size{size()};
     // grow enough to contain all the arguments
-    Resize(value_util::Accumulate(AddSize{}, old_size, args...));
+    Resize(value_util::LeftAccumulate(AddSize{}, old_size, args...));
     // write down arguments' contents
-    value_util::Accumulate(AddBytes{*this}, old_size, args...);
+    value_util::LeftAccumulate(AddBytes{*this}, old_size, args...);
   }
 
   SharedArrayType data_;
