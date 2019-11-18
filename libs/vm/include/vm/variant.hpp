@@ -642,9 +642,11 @@ public:
   {
     auto map = map_constructor(2);
     // TODO(tfr): This is dangerous: Type Id should never be serialized
+    // Neg on that.
     map.Append(TYPEID, variant.type_id);
 
     // primitive type variant
+
     if (variant.IsPrimitive())
     {
       // Since primitive is a union it suffices
