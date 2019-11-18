@@ -27,6 +27,7 @@
 #include "vm/string.hpp"
 
 #include <bitset>
+#include <limits>
 
 namespace fetch {
 namespace vm {
@@ -44,14 +45,14 @@ union Primitive
   float    f32;
   double   f64;
 
-  template<TypeId>
-  auto const &Ref() const noexcept;
+  template <typename T>
+  auto Get() const noexcept;
 
   template<TypeId>
   auto &Ref() noexcept;
 
-  template <typename T>
-  auto Get() const noexcept;
+  template<TypeId>
+  auto const &CRef() const noexcept;
 
   void Set(bool value) noexcept
   {
@@ -126,7 +127,31 @@ inline auto Primitive::Get<bool>() const noexcept
 }
 
 template <>
+inline auto &Primitive::Ref<bool>() noexcept
+{
+  return ui8;
+}
+
+template <>
+inline auto const &Primitive::Ref<bool>() const noexcept
+{
+  return ui8;
+}
+
+template <>
 inline auto Primitive::Get<int8_t>() const noexcept
+{
+  return i8;
+}
+
+template <>
+inline auto &Primitive::Ref<int8_t>() noexcept
+{
+  return i8;
+}
+
+template <>
+inline auto const &Primitive::Ref<int8_t>() const noexcept
 {
   return i8;
 }
@@ -138,7 +163,31 @@ inline auto Primitive::Get<uint8_t>() const noexcept
 }
 
 template <>
+inline auto &Primitive::Ref<uint8_t>() noexcept
+{
+  return ui8;
+}
+
+template <>
+inline auto const &Primitive::Ref<uint8_t>() const noexcept
+{
+  return ui8;
+}
+
+template <>
 inline auto Primitive::Get<int16_t>() const noexcept
+{
+  return i16;
+}
+
+template <>
+inline auto &Primitive::Ref<int16_t>() noexcept
+{
+  return i16;
+}
+
+template <>
+inline auto const &Primitive::Ref<int16_t>() const noexcept
 {
   return i16;
 }
@@ -150,7 +199,31 @@ inline auto Primitive::Get<uint16_t>() const noexcept
 }
 
 template <>
+inline auto &Primitive::Ref<uint16_t>() noexcept
+{
+  return ui16;
+}
+
+template <>
+inline auto const &Primitive::Ref<uint16_t>() const noexcept
+{
+  return ui16;
+}
+
+template <>
 inline auto Primitive::Get<int32_t>() const noexcept
+{
+  return i32;
+}
+
+template <>
+inline auto &Primitive::Ref<int32_t>() noexcept
+{
+  return i32;
+}
+
+template <>
+inline auto const &Primitive::Ref<int32_t>() const noexcept
 {
   return i32;
 }
@@ -162,7 +235,31 @@ inline auto Primitive::Get<uint32_t>() const noexcept
 }
 
 template <>
+inline auto &Primitive::Ref<uint32_t>() noexcept
+{
+  return ui32;
+}
+
+template <>
+inline auto const &Primitive::Ref<uint32_t>() const noexcept
+{
+  return ui32;
+}
+
+template <>
 inline auto Primitive::Get<int64_t>() const noexcept
+{
+  return i64;
+}
+
+template <>
+inline auto &Primitive::Ref<int64_t>() noexcept
+{
+  return i64;
+}
+
+template <>
+inline auto const &Primitive::Ref<int64_t>() const noexcept
 {
   return i64;
 }
@@ -174,7 +271,31 @@ inline auto Primitive::Get<uint64_t>() const noexcept
 }
 
 template <>
+inline auto &Primitive::Ref<uint64_t>() noexcept
+{
+  return ui64;
+}
+
+template <>
+inline auto const &Primitive::Ref<uint64_t>() const noexcept
+{
+  return ui64;
+}
+
+template <>
 inline auto Primitive::Get<float>() const noexcept
+{
+  return f32;
+}
+
+template <>
+inline auto &Primitive::Ref<float>() noexcept
+{
+  return f32;
+}
+
+template <>
+inline auto const &Primitive::Ref<float>() const noexcept
 {
   return f32;
 }
@@ -186,15 +307,51 @@ inline auto Primitive::Get<double>() const noexcept
 }
 
 template <>
+inline auto &Primitive::Ref<double>() noexcept
+{
+  return f64;
+}
+
+template <>
+inline auto const &Primitive::Ref<double>() const noexcept
+{
+  return f64;
+}
+
+template <>
 inline auto Primitive::Get<fixed_point::fp32_t>() const noexcept
 {
   return fixed_point::fp32_t::FromBase(i32);
 }
 
 template <>
+inline auto &Primitive::Ref<fixed_point::fp32_t>() noexcept
+{
+  return i32;
+}
+
+template <>
+inline auto const &Primitive::Ref<fixed_point::fp32_t>() const noexcept
+{
+  return i32;
+}
+
+template <>
 inline auto Primitive::Get<fixed_point::fp64_t>() const noexcept
 {
   return fixed_point::fp64_t::FromBase(i64);
+}
+
+template <>
+inline auto &Primitive::Ref<fixed_point::fp64_t>() noexcept
+{
+  return i64;
+}
+
+template <>
+inline auto const &Primitive::Ref<fixed_point::fp64_t>() const noexcept
+{
+  return i64;
 }
 
 struct Variant
@@ -444,6 +601,30 @@ struct Variant
   }
 
   template <typename T>
+  constexpr std::enable_if_t<IsPrimitive<T>::value, T &> Ref() noexcept
+  {
+    return primitive.Ref<T>();
+  }
+
+  template <typename T>
+  constexpr std::enable_if_t<IsPtr<T>::value, T &> Ref() noexcept
+  {
+    return object;
+  }
+
+  template <typename T>
+  constexpr std::enable_if_t<IsPrimitive<T>::value, T const &> CRef() const noexcept
+  {
+    return primitive.CRef<T>();
+  }
+
+  template <typename T>
+  constexpr std::enable_if_t<IsPtr<T>::value, T const &> CRef() const noexcept
+  {
+    return object;
+  }
+
+  template <typename T>
   std::enable_if_t<IsVariant<T>::value, T> Get() const noexcept
   {
     T variant;
@@ -563,19 +744,47 @@ template<class F, class RV, TypeId... type_ids> constexpr decltype(auto) SeqAccu
 
 }
 
-template<TypeId type_id> struct VariantView
+template<TypeId type_id, class VariantRef> struct VariantView
 {
 	using type = IdToTypeT<type_id>;
 
-	static constexpr type Get(Variant const &v) {
-		assert(v.type_id == type_id);
-		return v.Get<type>();
+	VariantView(VariantRef &var): var(var) {}
+
+	constexpr auto Get() const {
+		assert(var.type_id == type_id);
+		return var.Get<type>();
 	}
 
-	static constexpr void Set(Variant &v, type T) {
-		v.Assign(std::move(T), type_id);
+	static constexpr void Set(type T) {
+		var.Assign(std::move(T), type_id);
 	}
+
+	static constexpr T &Ref() {
+		// relaxed assertion: while type_id mismatch could indicate a flaw in logic,
+		// the afforementioned flaw could be as much as a transient object inconsistency,
+		// and nonetheless referring to a mistyped variant's object member would not
+		// constitute an UB
+		assert(type_id > TypeIds::PrimitiveMaxId || var.type_id == type_id);
+		return var.Ref<type>();
+	}
+
+	static constexpr T &CRef() const {
+		// relaxed assertion: while type_id mismatch could indicate a flaw in logic,
+		// the afforementioned flaw could be as much as a transient object inconsistency,
+		// and nonetheless referring to a mistyped variant's object member would not
+		// constitute an UB
+		assert(type_id > TypeIds::PrimitiveMaxId || var.type_id == type_id);
+		return var.CRef<type>();
+	}
+
+	VariantRef &var;
 };
+
+template<TypeId type_id> using VarView = VariantView<type_id, Variant &>;
+template<TypeId type_id> using CVarView = VariantView<type_id, Variant const &>;
+
+
+template<class VariantRef> struct DefaultCase
 
 template<TypeId... type_ids> using TypeIdSeq = detail_::TypeIdSeq<type_ids...>;
 
@@ -642,20 +851,18 @@ public:
   {
     auto map = map_constructor(2);
     // TODO(tfr): This is dangerous: Type Id should never be serialized
-    // Neg on that.
+    // dt: Any alternatives? How is it more dangerous than the value itself?
     map.Append(TYPEID, variant.type_id);
 
-    // primitive type variant
-
-    if (variant.IsPrimitive())
+    if (!ApplyFunctor<PrimitiveTypeIds>(variant.type_id,
+					VariantSlot<>([](auto &&var) {
+						// primitive type variant
+						map.Append(PRIMITIVE, var.Get());
+						return true;
+					}),
+					variant))
     {
-      // Since primitive is a union it suffices
-      // that we store one of the values.
-      uint64_t val = variant.primitive.ui64;
-      map.Append(PRIMITIVE, val);
-    }
-    else
-    {
+      // true was never returned, variant is not primitive
       // not supported yet
       throw std::runtime_error{"Serialization of Variant of Object type is not supported"};
     }
@@ -666,14 +873,13 @@ public:
   {
     map.ExpectKeyGetValue(TYPEID, variant.type_id);
 
-    if (variant.IsPrimitive())
+    if (!ApplyFunctor<PrimitiveTypeIds>(variant.type_id,
+					VariantSlot<>([](auto &&var) {
+						map.ExpectKeyGetValue(PRIMITIVE, var.Ref());
+					}),
+					variant))
     {
-      uint64_t val;
-      map.ExpectKeyGetValue(PRIMITIVE, val);
-      variant.primitive.ui64 = val;
-    }
-    else
-    {
+      // true was never returned, type_id is not primitive
       throw std::runtime_error{"Deserialization of objects not possible for variants."};
     }
   }
