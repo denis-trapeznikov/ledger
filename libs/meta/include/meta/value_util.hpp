@@ -57,5 +57,15 @@ constexpr auto LeftAccumulate(F &&f, A &&a, B &&b, Seq &&... seq)
                     std::forward<Seq>(seq)...);
 }
 
+template<class RV = void> struct NoOp {
+	template <class... Args> constexpr RV operator()(Args &&.../*unused*/) noexcept {
+		return RV{};
+	}
+};
+
+template<> struct NoOp<> {
+	template <class... Args> constexpr void operator()(Args &&.../*unused*/) noexcept {}
+};
+
 }  // namespace value_util
 }  // namespace fetch

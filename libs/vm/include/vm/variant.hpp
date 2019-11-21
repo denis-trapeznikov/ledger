@@ -692,6 +692,46 @@ struct Variant
 };
 using VariantArray = std::vector<Variant>;
 
+template<TypeId id, class VariantRef> struct VariantView
+{
+	using type = IdToTypeT<type_id>;
+
+	constexpr VariantView(VariantRef &var) noexcept: var(var) {}
+
+	constexpr auto Get() const {
+		assert(var.type_id == type_id);
+		return var.Get<type>();
+	}
+
+	static constexpr void Set(type T) {
+		var.Assign(std::move(T), type_id);
+	}
+
+	static constexpr T &Ref() {
+		// relaxed assertion: while type_id mismatch could indicate a flaw in logic,
+		// the afforementioned flaw could be as much as a transient object inconsistency,
+		// and nonetheless referring to a mistyped variant's object member would not
+		// constitute an UB
+		assert(type_id > TypeIds::PrimitiveMaxId || var.type_id == type_id);
+		return var.Ref<type>();
+	}
+
+	static constexpr T &CRef() const {
+		// relaxed assertion: while type_id mismatch could indicate a flaw in logic,
+		// the afforementioned flaw could be as much as a transient object inconsistency,
+		// and nonetheless referring to a mistyped variant's object member would not
+		// constitute an UB
+		assert(type_id > TypeIds::PrimitiveMaxId || var.type_id == type_id);
+		return var.CRef<type>();
+	}
+
+	VariantRef &var;
+};
+template<TypeId id, class Ref> constexpr decltype(auto) View(Ref &var) noexcept { return VariantView<id, Ref>(var); }
+
+template<TypeId type_id> using VarView = VariantView<type_id, Variant &>;
+template<TypeId type_id> using CVarView = VariantView<type_id, Variant const &>;
+
 namespace detail_
 {
 
@@ -737,54 +777,484 @@ template<> struct TypeToId<Address>: std::integral_constant<TypeId, TypeIds::Add
 
 template<TypeId... type_ids> using TypeIdSeq = std::integer_sequence<TypeId, type_ids...>;
 
+template<class Seq> struct Car;
+template<class Seq> static constexpr auto CarV = Car<Seq>::value;
+
+template<TypeId car, TypeId... cdr> struct Car<TypeIdSeq<car, cdr...>>: std::integral_constant<TypeId, car> {};
+
 template<class F, class RV, TypeId... type_ids> constexpr decltype(auto) SeqAccumulate(F &&f, RV init, TypeIdSeq<type_ids...>)
 {
 	return value_util::LeftAccumulate(std::forward<F>(f), init, type_ids...);
 }
 
+template<class F, class... Variants>
+constexpr decltype(auto) ApplyFunctor(TypeIdSeq<>, TypeId /*unused*/, F &&f, Variants &&...variants)
+{
+	return std::forward<F>(f)(variants...);
 }
 
-template<TypeId type_id, class VariantRef> struct VariantView
+template<TypeId id1, class F, class... Variants>
+constexpr decltype(auto) ApplyFunctor(TypeIdSeq<id1>, TypeId id, F &&f, Variants &&...variants)
 {
-	using type = IdToTypeT<type_id>;
-
-	VariantView(VariantRef &var): var(var) {}
-
-	constexpr auto Get() const {
-		assert(var.type_id == type_id);
-		return var.Get<type>();
+	switch(id) {
+		case id1: return std::forward<F>(f)(View<id1>(variants)...);
+		default:;
 	}
+	return std::forward<F>(f)(variants...);
+}
 
-	static constexpr void Set(type T) {
-		var.Assign(std::move(T), type_id);
+template<TypeId id1, TypeId id2, class F, class... Variants>
+constexpr decltype(auto) ApplyFunctor(TypeIdSeq<id1, id2>, TypeId id, F &&f, Variants &&...variants)
+{
+	switch(id) {
+		case id1: return std::forward<F>(f)(View<id1>(variants)...);
+		case id2: return std::forward<F>(f)(View<id2>(variants)...);
+		default:;
 	}
+	return std::forward<F>(f)(variants...);
+}
 
-	static constexpr T &Ref() {
-		// relaxed assertion: while type_id mismatch could indicate a flaw in logic,
-		// the afforementioned flaw could be as much as a transient object inconsistency,
-		// and nonetheless referring to a mistyped variant's object member would not
-		// constitute an UB
-		assert(type_id > TypeIds::PrimitiveMaxId || var.type_id == type_id);
-		return var.Ref<type>();
+template<TypeId id1, TypeId id2, TypeId id3, class F, class... Variants>
+constexpr decltype(auto) ApplyFunctor(TypeIdSeq<id1, id2, id3>, TypeId id, F &&f, Variants &&...variants)
+{
+	switch(id) {
+		case id1: return std::forward<F>(f)(View<id1>(variants)...);
+		case id2: return std::forward<F>(f)(View<id2>(variants)...);
+		case id3: return std::forward<F>(f)(View<id3>(variants)...);
+		default:;
 	}
+	return std::forward<F>(f)(variants...);
+}
 
-	static constexpr T &CRef() const {
-		// relaxed assertion: while type_id mismatch could indicate a flaw in logic,
-		// the afforementioned flaw could be as much as a transient object inconsistency,
-		// and nonetheless referring to a mistyped variant's object member would not
-		// constitute an UB
-		assert(type_id > TypeIds::PrimitiveMaxId || var.type_id == type_id);
-		return var.CRef<type>();
+template<TypeId id1, TypeId id2, TypeId id3, TypeId id4, class F, class... Variants>
+constexpr decltype(auto) ApplyFunctor(TypeIdSeq<id1, id2, id3, id4>, TypeId id, F &&f, Variants &&...variants)
+{
+	switch(id) {
+		case id1: return std::forward<F>(f)(View<id1>(variants)...);
+		case id2: return std::forward<F>(f)(View<id2>(variants)...);
+		case id3: return std::forward<F>(f)(View<id3>(variants)...);
+		case id4: return std::forward<F>(f)(View<id4>(variants)...);
+		default:;
 	}
+	return std::forward<F>(f)(variants...);
+}
 
-	VariantRef &var;
+template<TypeId id1, TypeId id2, TypeId id3, TypeId id4, TypeId id5, class F, class... Variants>
+constexpr decltype(auto) ApplyFunctor(TypeIdSeq<id1, id2, id3, id4, id5>, TypeId id, F &&f, Variants &&...variants)
+{
+	switch(id) {
+		case id1: return std::forward<F>(f)(View<id1>(variants)...);
+		case id2: return std::forward<F>(f)(View<id2>(variants)...);
+		case id3: return std::forward<F>(f)(View<id3>(variants)...);
+		case id4: return std::forward<F>(f)(View<id4>(variants)...);
+		case id5: return std::forward<F>(f)(View<id5>(variants)...);
+		default:;
+	}
+	return std::forward<F>(f)(variants...);
+}
+
+template<TypeId id1, TypeId id2, TypeId id3, TypeId id4, TypeId id5, TypeId id6, class F, class... Variants>
+constexpr decltype(auto) ApplyFunctor(TypeIdSeq<id1, id2, id3, id4, id5, id6>, TypeId id, F &&f, Variants &&...variants)
+{
+	switch(id) {
+		case id1: return std::forward<F>(f)(View<id1>(variants)...);
+		case id2: return std::forward<F>(f)(View<id2>(variants)...);
+		case id3: return std::forward<F>(f)(View<id3>(variants)...);
+		case id4: return std::forward<F>(f)(View<id4>(variants)...);
+		case id5: return std::forward<F>(f)(View<id5>(variants)...);
+		case id6: return std::forward<F>(f)(View<id6>(variants)...);
+		default:;
+	}
+	return std::forward<F>(f)(variants...);
+}
+
+template<TypeId id1, TypeId id2, TypeId id3, TypeId id4, TypeId id5, TypeId id6, TypeId id7, class F, class... Variants>
+constexpr decltype(auto) ApplyFunctor(TypeIdSeq<id1, id2, id3, id4, id5, id6, id7>, TypeId id, F &&f, Variants &&...variants)
+{
+	switch(id) {
+		case id1: return std::forward<F>(f)(View<id1>(variants)...);
+		case id2: return std::forward<F>(f)(View<id2>(variants)...);
+		case id3: return std::forward<F>(f)(View<id3>(variants)...);
+		case id4: return std::forward<F>(f)(View<id4>(variants)...);
+		case id5: return std::forward<F>(f)(View<id5>(variants)...);
+		case id6: return std::forward<F>(f)(View<id6>(variants)...);
+		case id7: return std::forward<F>(f)(View<id7>(variants)...);
+		default:;
+	}
+	return std::forward<F>(f)(variants...);
+}
+
+template<TypeId id1, TypeId id2, TypeId id3, TypeId id4, TypeId id5, TypeId id6, TypeId id7, TypeId id8, class F, class... Variants>
+constexpr decltype(auto) ApplyFunctor(TypeIdSeq<id1, id2, id3, id4, id5, id6, id7, id8>, TypeId id, F &&f, Variants &&...variants)
+{
+	switch(id) {
+		case id1: return std::forward<F>(f)(View<id1>(variants)...);
+		case id2: return std::forward<F>(f)(View<id2>(variants)...);
+		case id3: return std::forward<F>(f)(View<id3>(variants)...);
+		case id4: return std::forward<F>(f)(View<id4>(variants)...);
+		case id5: return std::forward<F>(f)(View<id5>(variants)...);
+		case id6: return std::forward<F>(f)(View<id6>(variants)...);
+		case id7: return std::forward<F>(f)(View<id7>(variants)...);
+		case id8: return std::forward<F>(f)(View<id8>(variants)...);
+		default:;
+	}
+	return std::forward<F>(f)(variants...);
+}
+
+template<TypeId id1, TypeId id2, TypeId id3, TypeId id4, TypeId id5, TypeId id6, TypeId id7, TypeId id8, TypeId id9, class F, class... Variants>
+constexpr decltype(auto) ApplyFunctor(TypeIdSeq<id1, id2, id3, id4, id5, id6, id7, id8, id9>, TypeId id, F &&f, Variants &&...variants)
+{
+	switch(id) {
+		case id1: return std::forward<F>(f)(View<id1>(variants)...);
+		case id2: return std::forward<F>(f)(View<id2>(variants)...);
+		case id3: return std::forward<F>(f)(View<id3>(variants)...);
+		case id4: return std::forward<F>(f)(View<id4>(variants)...);
+		case id5: return std::forward<F>(f)(View<id5>(variants)...);
+		case id6: return std::forward<F>(f)(View<id6>(variants)...);
+		case id7: return std::forward<F>(f)(View<id7>(variants)...);
+		case id8: return std::forward<F>(f)(View<id8>(variants)...);
+		case id9: return std::forward<F>(f)(View<id9>(variants)...);
+		default:;
+	}
+	return std::forward<F>(f)(variants...);
+}
+
+template<TypeId id1, TypeId id2, TypeId id3, TypeId id4, TypeId id5, TypeId id6, TypeId id7, TypeId id8, TypeId id9, TypeId id10, class F, class... Variants>
+constexpr decltype(auto) ApplyFunctor(TypeIdSeq<id1, id2, id3, id4, id5, id6, id7, id8, id9, id10>, TypeId id, F &&f, Variants &&...variants)
+{
+	switch(id) {
+		case id1: return std::forward<F>(f)(View<id1>(variants)...);
+		case id2: return std::forward<F>(f)(View<id2>(variants)...);
+		case id3: return std::forward<F>(f)(View<id3>(variants)...);
+		case id4: return std::forward<F>(f)(View<id4>(variants)...);
+		case id5: return std::forward<F>(f)(View<id5>(variants)...);
+		case id6: return std::forward<F>(f)(View<id6>(variants)...);
+		case id7: return std::forward<F>(f)(View<id7>(variants)...);
+		case id8: return std::forward<F>(f)(View<id8>(variants)...);
+		case id9: return std::forward<F>(f)(View<id9>(variants)...);
+		case id10: return std::forward<F>(f)(View<id10>(variants)...);
+		default:;
+	}
+	return std::forward<F>(f)(variants...);
+}
+
+template<TypeId id1, TypeId id2, TypeId id3, TypeId id4, TypeId id5, TypeId id6, TypeId id7, TypeId id8, TypeId id9, TypeId id10, TypeId id11, class F, class... Variants>
+constexpr decltype(auto) ApplyFunctor(TypeIdSeq<id1, id2, id3, id4, id5, id6, id7, id8, id9, id10, id11>, TypeId id, F &&f, Variants &&...variants)
+{
+	switch(id) {
+		case id1: return std::forward<F>(f)(View<id1>(variants)...);
+		case id2: return std::forward<F>(f)(View<id2>(variants)...);
+		case id3: return std::forward<F>(f)(View<id3>(variants)...);
+		case id4: return std::forward<F>(f)(View<id4>(variants)...);
+		case id5: return std::forward<F>(f)(View<id5>(variants)...);
+		case id6: return std::forward<F>(f)(View<id6>(variants)...);
+		case id7: return std::forward<F>(f)(View<id7>(variants)...);
+		case id8: return std::forward<F>(f)(View<id8>(variants)...);
+		case id9: return std::forward<F>(f)(View<id9>(variants)...);
+		case id10: return std::forward<F>(f)(View<id10>(variants)...);
+		case id11: return std::forward<F>(f)(View<id11>(variants)...);
+		default:;
+	}
+	return std::forward<F>(f)(variants...);
+}
+
+template<TypeId id1, TypeId id2, TypeId id3, TypeId id4, TypeId id5, TypeId id6, TypeId id7, TypeId id8, TypeId id9, TypeId id10, TypeId id11, TypeId id12, class F, class... Variants>
+constexpr decltype(auto) ApplyFunctor(TypeIdSeq<id1, id2, id3, id4, id5, id6, id7, id8, id9, id10, id11, id12>, TypeId id, F &&f, Variants &&...variants)
+{
+	switch(id) {
+		case id1: return std::forward<F>(f)(View<id1>(variants)...);
+		case id2: return std::forward<F>(f)(View<id2>(variants)...);
+		case id3: return std::forward<F>(f)(View<id3>(variants)...);
+		case id4: return std::forward<F>(f)(View<id4>(variants)...);
+		case id5: return std::forward<F>(f)(View<id5>(variants)...);
+		case id6: return std::forward<F>(f)(View<id6>(variants)...);
+		case id7: return std::forward<F>(f)(View<id7>(variants)...);
+		case id8: return std::forward<F>(f)(View<id8>(variants)...);
+		case id9: return std::forward<F>(f)(View<id9>(variants)...);
+		case id10: return std::forward<F>(f)(View<id10>(variants)...);
+		case id11: return std::forward<F>(f)(View<id11>(variants)...);
+		case id12: return std::forward<F>(f)(View<id12>(variants)...);
+		default:;
+	}
+	return std::forward<F>(f)(variants...);
+}
+
+template<TypeId id1, TypeId id2, TypeId id3, TypeId id4, TypeId id5, TypeId id6, TypeId id7, TypeId id8, TypeId id9, TypeId id10, TypeId id11, TypeId id12, TypeId id13, class F, class... Variants>
+constexpr decltype(auto) ApplyFunctor(TypeIdSeq<id1, id2, id3, id4, id5, id6, id7, id8, id9, id10, id11, id12, id13>, TypeId id, F &&f, Variants &&...variants)
+{
+	switch(id) {
+		case id1: return std::forward<F>(f)(View<id1>(variants)...);
+		case id2: return std::forward<F>(f)(View<id2>(variants)...);
+		case id3: return std::forward<F>(f)(View<id3>(variants)...);
+		case id4: return std::forward<F>(f)(View<id4>(variants)...);
+		case id5: return std::forward<F>(f)(View<id5>(variants)...);
+		case id6: return std::forward<F>(f)(View<id6>(variants)...);
+		case id7: return std::forward<F>(f)(View<id7>(variants)...);
+		case id8: return std::forward<F>(f)(View<id8>(variants)...);
+		case id9: return std::forward<F>(f)(View<id9>(variants)...);
+		case id10: return std::forward<F>(f)(View<id10>(variants)...);
+		case id11: return std::forward<F>(f)(View<id11>(variants)...);
+		case id12: return std::forward<F>(f)(View<id12>(variants)...);
+		case id13: return std::forward<F>(f)(View<id13>(variants)...);
+		default:;
+	}
+	return std::forward<F>(f)(variants...);
+}
+
+template<TypeId id1, TypeId id2, TypeId id3, TypeId id4, TypeId id5, TypeId id6, TypeId id7, TypeId id8, TypeId id9, TypeId id10, TypeId id11, TypeId id12, TypeId id13, TypeId id14, class F, class... Variants>
+constexpr decltype(auto) ApplyFunctor(TypeIdSeq<id1, id2, id3, id4, id5, id6, id7, id8, id9, id10, id11, id12, id13, id14>, TypeId id, F &&f, Variants &&...variants)
+{
+	switch(id) {
+		case id1: return std::forward<F>(f)(View<id1>(variants)...);
+		case id2: return std::forward<F>(f)(View<id2>(variants)...);
+		case id3: return std::forward<F>(f)(View<id3>(variants)...);
+		case id4: return std::forward<F>(f)(View<id4>(variants)...);
+		case id5: return std::forward<F>(f)(View<id5>(variants)...);
+		case id6: return std::forward<F>(f)(View<id6>(variants)...);
+		case id7: return std::forward<F>(f)(View<id7>(variants)...);
+		case id8: return std::forward<F>(f)(View<id8>(variants)...);
+		case id9: return std::forward<F>(f)(View<id9>(variants)...);
+		case id10: return std::forward<F>(f)(View<id10>(variants)...);
+		case id11: return std::forward<F>(f)(View<id11>(variants)...);
+		case id12: return std::forward<F>(f)(View<id12>(variants)...);
+		case id13: return std::forward<F>(f)(View<id13>(variants)...);
+		case id14: return std::forward<F>(f)(View<id14>(variants)...);
+		default:;
+	}
+	return std::forward<F>(f)(variants...);
+}
+
+template<TypeId id1, TypeId id2, TypeId id3, TypeId id4, TypeId id5, TypeId id6, TypeId id7, TypeId id8, TypeId id9, TypeId id10, TypeId id11, TypeId id12, TypeId id13, TypeId id14, TypeId id15, class F, class... Variants>
+constexpr decltype(auto) ApplyFunctor(TypeIdSeq<id1, id2, id3, id4, id5, id6, id7, id8, id9, id10, id11, id12, id13, id14, id15>, TypeId id, F &&f, Variants &&...variants)
+{
+	switch(id) {
+		case id1: return std::forward<F>(f)(View<id1>(variants)...);
+		case id2: return std::forward<F>(f)(View<id2>(variants)...);
+		case id3: return std::forward<F>(f)(View<id3>(variants)...);
+		case id4: return std::forward<F>(f)(View<id4>(variants)...);
+		case id5: return std::forward<F>(f)(View<id5>(variants)...);
+		case id6: return std::forward<F>(f)(View<id6>(variants)...);
+		case id7: return std::forward<F>(f)(View<id7>(variants)...);
+		case id8: return std::forward<F>(f)(View<id8>(variants)...);
+		case id9: return std::forward<F>(f)(View<id9>(variants)...);
+		case id10: return std::forward<F>(f)(View<id10>(variants)...);
+		case id11: return std::forward<F>(f)(View<id11>(variants)...);
+		case id12: return std::forward<F>(f)(View<id12>(variants)...);
+		case id13: return std::forward<F>(f)(View<id13>(variants)...);
+		case id14: return std::forward<F>(f)(View<id14>(variants)...);
+		case id15: return std::forward<F>(f)(View<id15>(variants)...);
+		default:;
+	}
+	return std::forward<F>(f)(variants...);
+}
+
+template<TypeId id1, TypeId id2, TypeId id3, TypeId id4, TypeId id5, TypeId id6, TypeId id7, TypeId id8, TypeId id9, TypeId id10, TypeId id11, TypeId id12, TypeId id13, TypeId id14, TypeId id15, TypeId id16, class F, class... Variants>
+constexpr decltype(auto) ApplyFunctor(TypeIdSeq<id1, id2, id3, id4, id5, id6, id7, id8, id9, id10, id11, id12, id13, id14, id15, id16>, TypeId id, F &&f, Variants &&...variants)
+{
+	switch(id) {
+		case id1: return std::forward<F>(f)(View<id1>(variants)...);
+		case id2: return std::forward<F>(f)(View<id2>(variants)...);
+		case id3: return std::forward<F>(f)(View<id3>(variants)...);
+		case id4: return std::forward<F>(f)(View<id4>(variants)...);
+		case id5: return std::forward<F>(f)(View<id5>(variants)...);
+		case id6: return std::forward<F>(f)(View<id6>(variants)...);
+		case id7: return std::forward<F>(f)(View<id7>(variants)...);
+		case id8: return std::forward<F>(f)(View<id8>(variants)...);
+		case id9: return std::forward<F>(f)(View<id9>(variants)...);
+		case id10: return std::forward<F>(f)(View<id10>(variants)...);
+		case id11: return std::forward<F>(f)(View<id11>(variants)...);
+		case id12: return std::forward<F>(f)(View<id12>(variants)...);
+		case id13: return std::forward<F>(f)(View<id13>(variants)...);
+		case id14: return std::forward<F>(f)(View<id14>(variants)...);
+		case id15: return std::forward<F>(f)(View<id15>(variants)...);
+		case id16: return std::forward<F>(f)(View<id16>(variants)...);
+		default:;
+	}
+	return std::forward<F>(f)(variants...);
+}
+
+template<TypeId id1, TypeId id2, TypeId id3, TypeId id4, TypeId id5, TypeId id6, TypeId id7, TypeId id8, TypeId id9, TypeId id10, TypeId id11, TypeId id12, TypeId id13, TypeId id14, TypeId id15, TypeId id16, TypeId id17, class F, class... Variants>
+constexpr decltype(auto) ApplyFunctor(TypeIdSeq<id1, id2, id3, id4, id5, id6, id7, id8, id9, id10, id11, id12, id13, id14, id15, id16, id17>, TypeId id, F &&f, Variants &&...variants)
+{
+	switch(id) {
+		case id1: return std::forward<F>(f)(View<id1>(variants)...);
+		case id2: return std::forward<F>(f)(View<id2>(variants)...);
+		case id3: return std::forward<F>(f)(View<id3>(variants)...);
+		case id4: return std::forward<F>(f)(View<id4>(variants)...);
+		case id5: return std::forward<F>(f)(View<id5>(variants)...);
+		case id6: return std::forward<F>(f)(View<id6>(variants)...);
+		case id7: return std::forward<F>(f)(View<id7>(variants)...);
+		case id8: return std::forward<F>(f)(View<id8>(variants)...);
+		case id9: return std::forward<F>(f)(View<id9>(variants)...);
+		case id10: return std::forward<F>(f)(View<id10>(variants)...);
+		case id11: return std::forward<F>(f)(View<id11>(variants)...);
+		case id12: return std::forward<F>(f)(View<id12>(variants)...);
+		case id13: return std::forward<F>(f)(View<id13>(variants)...);
+		case id14: return std::forward<F>(f)(View<id14>(variants)...);
+		case id15: return std::forward<F>(f)(View<id15>(variants)...);
+		case id16: return std::forward<F>(f)(View<id16>(variants)...);
+		case id17: return std::forward<F>(f)(View<id17>(variants)...);
+		default:;
+	}
+	return std::forward<F>(f)(variants...);
+}
+
+template<TypeId id1, TypeId id2, TypeId id3, TypeId id4, TypeId id5, TypeId id6, TypeId id7, TypeId id8, TypeId id9, TypeId id10, TypeId id11, TypeId id12, TypeId id13, TypeId id14, TypeId id15, TypeId id16, TypeId id17, TypeId id18, class F, class... Variants>
+constexpr decltype(auto) ApplyFunctor(TypeIdSeq<id1, id2, id3, id4, id5, id6, id7, id8, id9, id10, id11, id12, id13, id14, id15, id16, id17, id18>, TypeId id, F &&f, Variants &&...variants)
+{
+	switch(id) {
+		case id1: return std::forward<F>(f)(View<id1>(variants)...);
+		case id2: return std::forward<F>(f)(View<id2>(variants)...);
+		case id3: return std::forward<F>(f)(View<id3>(variants)...);
+		case id4: return std::forward<F>(f)(View<id4>(variants)...);
+		case id5: return std::forward<F>(f)(View<id5>(variants)...);
+		case id6: return std::forward<F>(f)(View<id6>(variants)...);
+		case id7: return std::forward<F>(f)(View<id7>(variants)...);
+		case id8: return std::forward<F>(f)(View<id8>(variants)...);
+		case id9: return std::forward<F>(f)(View<id9>(variants)...);
+		case id10: return std::forward<F>(f)(View<id10>(variants)...);
+		case id11: return std::forward<F>(f)(View<id11>(variants)...);
+		case id12: return std::forward<F>(f)(View<id12>(variants)...);
+		case id13: return std::forward<F>(f)(View<id13>(variants)...);
+		case id14: return std::forward<F>(f)(View<id14>(variants)...);
+		case id15: return std::forward<F>(f)(View<id15>(variants)...);
+		case id16: return std::forward<F>(f)(View<id16>(variants)...);
+		case id17: return std::forward<F>(f)(View<id17>(variants)...);
+		case id18: return std::forward<F>(f)(View<id18>(variants)...);
+		default:;
+	}
+	return std::forward<F>(f)(variants...);
+}
+
+template<TypeId id1, TypeId id2, TypeId id3, TypeId id4, TypeId id5, TypeId id6, TypeId id7, TypeId id8, TypeId id9, TypeId id10, TypeId id11, TypeId id12, TypeId id13, TypeId id14, TypeId id15, TypeId id16, TypeId id17, TypeId id18, TypeId id19, class F, class... Variants>
+constexpr decltype(auto) ApplyFunctor(TypeIdSeq<id1, id2, id3, id4, id5, id6, id7, id8, id9, id10, id11, id12, id13, id14, id15, id16, id17, id18, id19>, TypeId id, F &&f, Variants &&...variants)
+{
+	switch(id) {
+		case id1: return std::forward<F>(f)(View<id1>(variants)...);
+		case id2: return std::forward<F>(f)(View<id2>(variants)...);
+		case id3: return std::forward<F>(f)(View<id3>(variants)...);
+		case id4: return std::forward<F>(f)(View<id4>(variants)...);
+		case id5: return std::forward<F>(f)(View<id5>(variants)...);
+		case id6: return std::forward<F>(f)(View<id6>(variants)...);
+		case id7: return std::forward<F>(f)(View<id7>(variants)...);
+		case id8: return std::forward<F>(f)(View<id8>(variants)...);
+		case id9: return std::forward<F>(f)(View<id9>(variants)...);
+		case id10: return std::forward<F>(f)(View<id10>(variants)...);
+		case id11: return std::forward<F>(f)(View<id11>(variants)...);
+		case id12: return std::forward<F>(f)(View<id12>(variants)...);
+		case id13: return std::forward<F>(f)(View<id13>(variants)...);
+		case id14: return std::forward<F>(f)(View<id14>(variants)...);
+		case id15: return std::forward<F>(f)(View<id15>(variants)...);
+		case id16: return std::forward<F>(f)(View<id16>(variants)...);
+		case id17: return std::forward<F>(f)(View<id17>(variants)...);
+		case id18: return std::forward<F>(f)(View<id18>(variants)...);
+		case id19: return std::forward<F>(f)(View<id19>(variants)...);
+		default:;
+	}
+	return std::forward<F>(f)(variants...);
+}
+
+template<TypeId id1, TypeId id2, TypeId id3, TypeId id4, TypeId id5, TypeId id6, TypeId id7, TypeId id8, TypeId id9, TypeId id10, TypeId id11, TypeId id12, TypeId id13, TypeId id14, TypeId id15, TypeId id16, TypeId id17, TypeId id18, TypeId id19, TypeId id20, class F, class... Variants>
+constexpr decltype(auto) ApplyFunctor(TypeIdSeq<id1, id2, id3, id4, id5, id6, id7, id8, id9, id10, id11, id12, id13, id14, id15, id16, id17, id18, id19, id20>, TypeId id, F &&f, Variants &&...variants)
+{
+	switch(id) {
+		case id1: return std::forward<F>(f)(View<id1>(variants)...);
+		case id2: return std::forward<F>(f)(View<id2>(variants)...);
+		case id3: return std::forward<F>(f)(View<id3>(variants)...);
+		case id4: return std::forward<F>(f)(View<id4>(variants)...);
+		case id5: return std::forward<F>(f)(View<id5>(variants)...);
+		case id6: return std::forward<F>(f)(View<id6>(variants)...);
+		case id7: return std::forward<F>(f)(View<id7>(variants)...);
+		case id8: return std::forward<F>(f)(View<id8>(variants)...);
+		case id9: return std::forward<F>(f)(View<id9>(variants)...);
+		case id10: return std::forward<F>(f)(View<id10>(variants)...);
+		case id11: return std::forward<F>(f)(View<id11>(variants)...);
+		case id12: return std::forward<F>(f)(View<id12>(variants)...);
+		case id13: return std::forward<F>(f)(View<id13>(variants)...);
+		case id14: return std::forward<F>(f)(View<id14>(variants)...);
+		case id15: return std::forward<F>(f)(View<id15>(variants)...);
+		case id16: return std::forward<F>(f)(View<id16>(variants)...);
+		case id17: return std::forward<F>(f)(View<id17>(variants)...);
+		case id18: return std::forward<F>(f)(View<id18>(variants)...);
+		case id19: return std::forward<F>(f)(View<id19>(variants)...);
+		case id20: return std::forward<F>(f)(View<id20>(variants)...);
+		default:;
+	}
+	return std::forward<F>(f)(variants...);
+}
+
+template<TypeId id1, TypeId id2, TypeId id3, TypeId id4, TypeId id5, TypeId id6, TypeId id7, TypeId id8, TypeId id9, TypeId id10, TypeId id11, TypeId id12, TypeId id13, TypeId id14, TypeId id15, TypeId id16, TypeId id17, TypeId id18, TypeId id19, TypeId id20, TypeId id21, class F, class... Variants>
+constexpr decltype(auto) ApplyFunctor(TypeIdSeq<id1, id2, id3, id4, id5, id6, id7, id8, id9, id10, id11, id12, id13, id14, id15, id16, id17, id18, id19, id20, id21>, TypeId id, F &&f, Variants &&...variants)
+{
+	switch(id) {
+		case id1: return std::forward<F>(f)(View<id1>(variants)...);
+		case id2: return std::forward<F>(f)(View<id2>(variants)...);
+		case id3: return std::forward<F>(f)(View<id3>(variants)...);
+		case id4: return std::forward<F>(f)(View<id4>(variants)...);
+		case id5: return std::forward<F>(f)(View<id5>(variants)...);
+		case id6: return std::forward<F>(f)(View<id6>(variants)...);
+		case id7: return std::forward<F>(f)(View<id7>(variants)...);
+		case id8: return std::forward<F>(f)(View<id8>(variants)...);
+		case id9: return std::forward<F>(f)(View<id9>(variants)...);
+		case id10: return std::forward<F>(f)(View<id10>(variants)...);
+		case id11: return std::forward<F>(f)(View<id11>(variants)...);
+		case id12: return std::forward<F>(f)(View<id12>(variants)...);
+		case id13: return std::forward<F>(f)(View<id13>(variants)...);
+		case id14: return std::forward<F>(f)(View<id14>(variants)...);
+		case id15: return std::forward<F>(f)(View<id15>(variants)...);
+		case id16: return std::forward<F>(f)(View<id16>(variants)...);
+		case id17: return std::forward<F>(f)(View<id17>(variants)...);
+		case id18: return std::forward<F>(f)(View<id18>(variants)...);
+		case id19: return std::forward<F>(f)(View<id19>(variants)...);
+		case id20: return std::forward<F>(f)(View<id20>(variants)...);
+		case id21: return std::forward<F>(f)(View<id21>(variants)...);
+		default:;
+	}
+	return std::forward<F>(f)(variants...);
+}
+
+// 21 distinct id should be enough for everyone.
+
+template<class F, class VariantsPack, TypeId example_id>
+struct InvokeResult;
+
+template<class F, class VariantsPack, TypeId example_id> using InvokeResultT = typename InvokeResult<F, VariantsPack, example_id>::type;
+
+template<class F, class... Variants, TypeId example_id>
+struct InvokeResult<F, value_util::ArgSet<Variants...>, example_id>: type_util::InvokeResult<F, VariantView<example_id, Variants>...> {};
+
+template<class F, class VariantsPack, TypeIdSeq for_example>
+static constexpr decltype(auto) WithAddedDefault(F &&f)
+{
+	using Default = InvokeResultT<F, VariantsPack, CarV<for_example>>;
+	return value_util::Slots(std::forward<F>(f),
+				 value_util::Slot<VariantsPack>(value_util::NoOp<Default>{}));
+}
+
+template<class F, class... Variants>
+class HasDefault
+{
+	template<class G> static constexpr Can(G &&/*unused*/)->decltype(G(std::declval<Variants>()...), std::true_type{});
+	static constexpr std::false_type Can(...);
+public:
+	static constexpr bool value = decltype(Can(std::declval<F>()))::value;
 };
 
-template<TypeId type_id> using VarView = VariantView<type_id, Variant &>;
-template<TypeId type_id> using CVarView = VariantView<type_id, Variant const &>;
+template<class F, class... Variants> static constexpr auto HasDefaultV = HasDefault<F, Variants...>::value;
 
+template<class F, class... Variants>
+static constexpr std::enable_if_t<HasDefaultV<F, Variants...>, F &&> WithDefault(F &&f, Variants &&.../*unused*/)
+{
+	return std::forward<F>(f);
+}
 
-template<class VariantRef> struct DefaultCase
+template<class F, class... Variants>
+static constexpr std::enable_if_t<!HasDefaultV<F, Variants...>, F &&> WithDefault(F &&f, Variants &&.../*unused*/)
+{
+	return WithAddedDefault(std::forward<F>(f));
+}
+
+}
 
 template<TypeId... type_ids> using TypeIdSeq = detail_::TypeIdSeq<type_ids...>;
 

@@ -26,7 +26,7 @@ namespace fetch {
 namespace math {
 
 template <typename T1, typename T2>
-fetch::meta::IsIterableTwoArg<T1, T2, void> PolyfillInlineAdd(T1 &ret, T2 const &other)
+fetch::meta::IfBothIterable<T1, T2, void> PolyfillInlineAdd(T1 &ret, T2 const &other)
 {
   // To vectorise this operation, we add column by column
   // as the framework garantuees continous aligned segments
@@ -43,7 +43,7 @@ fetch::meta::IsIterableTwoArg<T1, T2, void> PolyfillInlineAdd(T1 &ret, T2 const 
 }
 
 template <typename T1, typename T2>
-fetch::meta::IsIterableTwoArg<T1, T2, void> Assign(T1 ret, T2 const &other)
+fetch::meta::IsBothIterable<T1, T2, void> Assign(T1 ret, T2 const &other)
 {
   memory::Range range(0, std::size_t(ret.height()));
 
@@ -62,7 +62,7 @@ fetch::meta::IsIterableTwoArg<T1, T2, void> Assign(T1 ret, T2 const &other)
 }
 
 template <typename T1, typename T2>
-fetch::meta::IsIterableTwoArg<T1, T2, void> AssignVector(T1 ret, T2 const &other)
+fetch::meta::IsBothIterable<T1, T2, void> AssignVector(T1 ret, T2 const &other)
 {
   ret.data().in_parallel().ApplyMultiple([](auto const &a, auto &b) { b = a; }, other.data());
 }
