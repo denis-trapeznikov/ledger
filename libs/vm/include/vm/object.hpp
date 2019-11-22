@@ -19,9 +19,11 @@
 
 #include "core/serializers/base_types.hpp"
 #include "core/serializers/main_serializer.hpp"
+#include "meta/slots.hpp"
 #include "variant/variant.hpp"
 #include "vectorise/fixed_point/fixed_point.hpp"
 #include "vm/common.hpp"
+#include "vm/variant.hpp"
 
 #include <type_traits>
 
@@ -414,59 +416,16 @@ class Unknown;
 template <template <typename T, typename... Args> class Functor, typename... Args>
 auto TypeIdAsCanonicalType(TypeId const type_id, Args &&... args)
 {
-  switch (type_id)
-  {
-  case TypeIds::Unknown:
-    return Functor<Unknown>{}(std::forward<Args>(args)...);
+  return ApplyFunctor<TypeIdSeq<TypeIds::Unknown, TypeIds::Null, TypeIds::Void>, BuiltinTypeIds>(
+	  type_id,
+	  value_util::Slots(
+		  VariantSlot<TypeIds::Uknown>([&args...](auto /*unused*/) { return Functor<Unknown>{}(std::forward<Args>(args)...); }),
+		  VariantSlot<TypeIdSeq<TypeIds::Null, TypeIds::Void>, BuiltinTypeIds>([&args...](auto type_view) {
+			  using TypeView = decltype(type_view);
 
-  case TypeIds::Null:
-    return Functor<std::nullptr_t>{}(std::forward<Args>(args)...);
-
-  case TypeIds::Void:
-    return Functor<void>{}(std::forward<Args>(args)...);
-
-  case TypeIds::Bool:
-    return Functor<uint8_t>{}(std::forward<Args>(args)...);
-
-  case TypeIds::Int8:
-    return Functor<int8_t>{}(std::forward<Args>(args)...);
-
-  case TypeIds::UInt8:
-    return Functor<uint8_t>{}(std::forward<Args>(args)...);
-
-  case TypeIds::Int16:
-    return Functor<int16_t>{}(std::forward<Args>(args)...);
-
-  case TypeIds::UInt16:
-    return Functor<uint16_t>{}(std::forward<Args>(args)...);
-
-  case TypeIds::Int32:
-    return Functor<int32_t>{}(std::forward<Args>(args)...);
-
-  case TypeIds::UInt32:
-    return Functor<uint32_t>{}(std::forward<Args>(args)...);
-
-  case TypeIds::Int64:
-    return Functor<int64_t>{}(std::forward<Args>(args)...);
-
-  case TypeIds::UInt64:
-    return Functor<uint64_t>{}(std::forward<Args>(args)...);
-
-  case TypeIds::Float32:
-    return Functor<float>{}(std::forward<Args>(args)...);
-
-  case TypeIds::Float64:
-    return Functor<double>{}(std::forward<Args>(args)...);
-
-  case TypeIds::String:
-    return Functor<Ptr<String>>{}(std::forward<Args>(args)...);
-
-  case TypeIds::Address:
-    return Functor<Ptr<Address>>{}(std::forward<Args>(args)...);
-
-  default:
-    return Functor<Ptr<Object>>{}(std::forward<Args>(args)...);
-  }  // switch
+			  return Functor<TypeView::storage_type>{}(std::forward<Args>(args)...);
+		  }),
+		  [&args...]() { return Functor<Object>(std::forward<Args>(args)...); }));
 }
 
 }  // namespace vm

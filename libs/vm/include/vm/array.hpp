@@ -18,7 +18,9 @@
 //------------------------------------------------------------------------------
 
 #include "core/serializers/base_types.hpp"
+#include "meta/slots.hpp"
 #include "vectorise/fixed_point/fixed_point.hpp"
+#include "vm/variant.hpp"
 #include "vm/vm.hpp"
 
 #include <algorithm>
@@ -378,78 +380,20 @@ Ptr<IArray> IArray::Construct(VM *vm, TypeId type_id, Args &&... args)
 {
   TypeInfo const &type_info       = vm->GetTypeInfo(type_id);
   TypeId const    element_type_id = type_info.template_parameter_type_ids[0];
-  switch (element_type_id)
-  {
-  case TypeIds::Bool:
-  {
-    return Ptr<IArray>{
-        new Array<uint8_t>(vm, type_id, element_type_id, std::forward<Args>(args)...)};
-  }
-  case TypeIds::Int8:
-  {
-    return Ptr<IArray>{
-        new Array<int8_t>(vm, type_id, element_type_id, std::forward<Args>(args)...)};
-  }
-  case TypeIds::UInt8:
-  {
-    return Ptr<IArray>{
-        new Array<uint8_t>(vm, type_id, element_type_id, std::forward<Args>(args)...)};
-  }
-  case TypeIds::Int16:
-  {
-    return Ptr<IArray>{
-        new Array<int16_t>(vm, type_id, element_type_id, std::forward<Args>(args)...)};
-  }
-  case TypeIds::UInt16:
-  {
-    return Ptr<IArray>{
-        new Array<uint16_t>(vm, type_id, element_type_id, std::forward<Args>(args)...)};
-  }
-  case TypeIds::Int32:
-  {
-    return Ptr<IArray>{
-        new Array<int32_t>(vm, type_id, element_type_id, std::forward<Args>(args)...)};
-  }
-  case TypeIds::UInt32:
-  {
-    return Ptr<IArray>{
-        new Array<uint32_t>(vm, type_id, element_type_id, std::forward<Args>(args)...)};
-  }
-  case TypeIds::Int64:
-  {
-    return Ptr<IArray>{
-        new Array<int64_t>(vm, type_id, element_type_id, std::forward<Args>(args)...)};
-  }
-  case TypeIds::UInt64:
-  {
-    return Ptr<IArray>{
-        new Array<uint64_t>(vm, type_id, element_type_id, std::forward<Args>(args)...)};
-  }
-  case TypeIds::Float32:
-  {
-    return Ptr<IArray>{new Array<float>(vm, type_id, element_type_id, std::forward<Args>(args)...)};
-  }
-  case TypeIds::Float64:
-  {
-    return Ptr<IArray>{
-        new Array<double>(vm, type_id, element_type_id, std::forward<Args>(args)...)};
-  }
-  case TypeIds::Fixed32:
-  {
-    return Ptr<IArray>{
-        new Array<fixed_point::fp32_t>(vm, type_id, element_type_id, std::forward<Args>(args)...)};
-  }
-  case TypeIds::Fixed64:
-  {
-    return Ptr<IArray>{
-        new Array<fixed_point::fp64_t>(vm, type_id, element_type_id, std::forward<Args>(args)...)};
-  }
-  default:
-  {
-    return Ptr<IArray>{
-        new Array<Ptr<Object>>(vm, type_id, element_type_id, std::forward<Args>(args)...)};
-  }
-  }  // switch
+  ApplyFunctor<PrimitiveTypeIds>(element_type_id,
+				 value_util::Slots(
+					 VariantSlot(PrimitiveTypeIds{},
+						     [vm, type_id, &args...](auto elem_type_id) {
+							     using VariantView = decltype(elem_type_id);
+							     using VariantView::storage_type;
+							     static constexpr auto element_type_id = VariandView::type_id;
+							     return Ptr<IArray>(
+								     new Array<storage_type>(vm, type_id, element_type_id, std::forward<Args>(args)...));
+						     }),
+					 [vm, type_id, element_type_id, &args...]() {
+						 return Ptr<IArray>{
+							 new Array<Ptr<Object>>(vm, type_id, element_type_id, std::forward<Args>(args)...)};
+					 }));
 }
 
 inline Ptr<IArray> IArray::Constructor(VM *vm, TypeId type_id, int32_t size)

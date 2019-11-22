@@ -17,7 +17,9 @@
 //
 //------------------------------------------------------------------------------
 
+#include "meta/slots.hpp"
 #include "vectorise/fixed_point/fixed_point.hpp"
+#include "vm/variant.hpp"
 #include "vm/vm.hpp"
 
 #include <cstddef>
@@ -287,128 +289,35 @@ private:
 template <typename Key, template <typename, typename> class Container = Map>
 Ptr<IMap> inner(TypeId value_type_id, VM *vm, TypeId type_id)
 {
-  switch (value_type_id)
-  {
-  case TypeIds::Bool:
-  {
-    return Ptr<IMap>(new Container<Key, uint8_t>(vm, type_id));
-  }
-  case TypeIds::Int8:
-  {
-    return Ptr<IMap>(new Container<Key, int8_t>(vm, type_id));
-  }
-  case TypeIds::UInt8:
-  {
-    return Ptr<IMap>(new Container<Key, uint8_t>(vm, type_id));
-  }
-  case TypeIds::Int16:
-  {
-    return Ptr<IMap>(new Container<Key, int16_t>(vm, type_id));
-  }
-  case TypeIds::UInt16:
-  {
-    return Ptr<IMap>(new Container<Key, uint16_t>(vm, type_id));
-  }
-  case TypeIds::Int32:
-  {
-    return Ptr<IMap>(new Container<Key, int32_t>(vm, type_id));
-  }
-  case TypeIds::UInt32:
-  {
-    return Ptr<IMap>(new Container<Key, uint32_t>(vm, type_id));
-  }
-  case TypeIds::Int64:
-  {
-    return Ptr<IMap>(new Container<Key, int64_t>(vm, type_id));
-  }
-  case TypeIds::UInt64:
-  {
-    return Ptr<IMap>(new Container<Key, uint64_t>(vm, type_id));
-  }
-  case TypeIds::Float32:
-  {
-    return Ptr<IMap>(new Container<Key, float>(vm, type_id));
-  }
-  case TypeIds::Float64:
-  {
-    return Ptr<IMap>(new Container<Key, double>(vm, type_id));
-  }
-  case TypeIds::Fixed32:
-  {
-    return Ptr<IMap>(new Container<Key, fixed_point::fp32_t>(vm, type_id));
-  }
-  case TypeIds::Fixed64:
-  {
-    return Ptr<IMap>(new Container<Key, fixed_point::fp64_t>(vm, type_id));
-  }
-  default:
-  {
-    return Ptr<IMap>(new Container<Key, Ptr<Object>>(vm, type_id));
-  }
-  }  // switch
+  return ApplyFunctor<PrimitiveTypeIds>(
+	  type_id,
+	  value_util::Slots(
+		  VariantSlot(PrimitiveTypeIds{},
+			      [vm](auto void_view) {
+				      using View = decltype(void_view);
+				      using View::type;
+				      using View::storage_type;
+				      using View::type_id;
+
+				      return Ptr<IMap>(new Container<Key, storage_type>(vm, type_id));
+			      }),
+		  [vm, type_id]() { return Ptr<IMap>(new Container<Key, Ptr<Object>>(vm, type_id)); }));
 }
 
 inline Ptr<IMap> outer(TypeId key_type_id, TypeId value_type_id, VM *vm, TypeId type_id)
 {
-  switch (key_type_id)
-  {
-  case TypeIds::Bool:
-  {
-    return inner<uint8_t>(value_type_id, vm, type_id);
-  }
-  case TypeIds::Int8:
-  {
-    return inner<int8_t>(value_type_id, vm, type_id);
-  }
-  case TypeIds::UInt8:
-  {
-    return inner<uint8_t>(value_type_id, vm, type_id);
-  }
-  case TypeIds::Int16:
-  {
-    return inner<int16_t>(value_type_id, vm, type_id);
-  }
-  case TypeIds::UInt16:
-  {
-    return inner<uint16_t>(value_type_id, vm, type_id);
-  }
-  case TypeIds::Int32:
-  {
-    return inner<int32_t>(value_type_id, vm, type_id);
-  }
-  case TypeIds::UInt32:
-  {
-    return inner<uint32_t>(value_type_id, vm, type_id);
-  }
-  case TypeIds::Int64:
-  {
-    return inner<int64_t>(value_type_id, vm, type_id);
-  }
-  case TypeIds::UInt64:
-  {
-    return inner<uint64_t>(value_type_id, vm, type_id);
-  }
-  case TypeIds::Float32:
-  {
-    return inner<float>(value_type_id, vm, type_id);
-  }
-  case TypeIds::Float64:
-  {
-    return inner<double>(value_type_id, vm, type_id);
-  }
-  case TypeIds::Fixed32:
-  {
-    return inner<fixed_point::fp32_t>(value_type_id, vm, type_id);
-  }
-  case TypeIds::Fixed64:
-  {
-    return inner<fixed_point::fp64_t>(value_type_id, vm, type_id);
-  }
-  default:
-  {
-    return inner<Ptr<Object>>(value_type_id, vm, type_id);
-  }
-  }  // switch
+  return ApplyFunctor<PrimitiveTypeIds>(
+	  key_type_id,
+	  value_util::Slots(
+		  VariantSlot(PrimitiveTypeIds{},
+			      [value_type_id, vm, type_id](auto void_view) {
+				      using View = decltype(void_view);
+				      using View::type;
+				      using View::storage_type;
+
+				      return inner<storage_type>(value_type_id, vm, type_id);
+			      }),
+		  [value_type_id, vm, type_id]() { return inner<Ptr<Object>>(value_type_id, vm, type_id); }));
 }
 
 inline Ptr<IMap> IMap::Constructor(VM *vm, TypeId type_id)
