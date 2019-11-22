@@ -95,7 +95,7 @@ struct Bind
 
 
 template <typename T, typename... Ts>
-using IsAnyOf = Any<std::is_same<T, Ts>...>;
+using IsAnyOf = Disjunction<std::is_same<T, Ts>...>;
 
 template <typename T, typename... Ts>
 static constexpr auto IsAnyOfV = IsAnyOf<T, Ts...>::value;
@@ -117,21 +117,7 @@ struct InvokeResult
 template <typename F, typename... Args>
 using InvokeResultT = typename InvokeResult<F, Args...>::type;
 
-template<class A, class B> struct Max<A, B>
-{
-	static constexpr auto value = std::max(A::value, B::value);
-};
-
-template<class A, class B> struct Min<A, B>
-{
-	static constexpr auto value = std::min(A::value, B::value);
-};
-
 namespace seq {
-
-template<class F, class Sequence> struct LeftAccumulate;
-
-template<class F, template<class T, T...> class Seq, class T, T... seq> struct LeftAccumulatex<F, Seq<T, seq...>>: type_util::LeftAccumulate<F, Seq<T, seq>...> {};
 
 template<class... Seqs> struct Concat;
 template<class... Seqs> using ConcatT = typename Concat<Seqs...>::type;
@@ -140,15 +126,6 @@ template<class... Seqs> struct Concat: LeftAccumulate<ConcatT, Seqs...> {};
 
 template<template<class T, T...> class IntegerSequence, class T, T... seq1, T... seq2>
 struct Concat<IntegerSequence<T, seq1...>, IntegerSequence<T, seq2...>>: Box<IntegerSequence<T, seq1..., seq2...>> {};
-
-template<class T, template<T...> class Sequence, T... seq1, T... seq2>
-struct Concat<Sequence<seq1...>, Sequence<seq2...>>: Box<Sequence<seq1..., seq2...>> {};
-
-template<class Sequence> using Max = LeftAccumulate<type_util::Max, Sequence>;
-template<class Sequence> static constexpr auto MaxV = Max<Sequence>::value;
-
-template<class Sequence> using Min = LeftAccumulate<type_util::Min, Sequence>;
-template<class Sequence> static constexpr auto MinV = Min<Sequence>::value;
 
 }
 }  // namespace type_util

@@ -159,7 +159,7 @@ using IfIsPod = EnableIf<IsPOD<T>, R>;
 template<class F, class... Args> class IsInvocable {
 	struct Yes {};
 	struct No {};
-	template<class F> static constexpr decltype(std::declval<F>(std::declval<Args>()...), Yes{}) Can(F &&f);
+	template<class G> static constexpr decltype(std::declval<G>(std::declval<Args>()...), Yes{}) Can(G &&f);
 	static constexpr No Can(...);
 public:
 	static constexpr bool value = std::is_same<decltype(Can(std::declval<F>())), Yes>::value;
