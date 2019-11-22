@@ -692,33 +692,34 @@ struct Variant
 };
 using VariantArray = std::vector<Variant>;
 
-template<TypeId id, class VariantRef> struct VariantView
+template<TypeId id, class VariantRef, class = std::decay_t<VariantRef>> struct VariantView
 {
-	using type = IdToTypeT<type_id>;
+	static constexpr TypeId type_id = id;
+	using type = typename IdToType<type_id>::type;
+	using storage_type = typename IdToType<type_id>::storage_type;
 
 	constexpr VariantView(VariantRef &var) noexcept: var(var) {}
 
 	constexpr auto Get() const {
-		assert(var.type_id == type_id);
 		return var.Get<type>();
 	}
 
-	static constexpr void Set(type T) {
-		var.Assign(std::move(T), type_id);
+	constexpr void Set(type T) {
+		var.Set(T);
 	}
 
-	static constexpr T &Ref() {
+	constexpr decltype(auto) Ref() {
 		// relaxed assertion: while type_id mismatch could indicate a flaw in logic,
-		// the afforementioned flaw could be as much as a transient object inconsistency,
+		// the aforementioned flaw could be as much as a transient object inconsistency,
 		// and nonetheless referring to a mistyped variant's object member would not
 		// constitute an UB
 		assert(type_id > TypeIds::PrimitiveMaxId || var.type_id == type_id);
 		return var.Ref<type>();
 	}
 
-	static constexpr T &CRef() const {
+	constexpr decltype(auto) CRef() const {
 		// relaxed assertion: while type_id mismatch could indicate a flaw in logic,
-		// the afforementioned flaw could be as much as a transient object inconsistency,
+		// the aforementioned flaw could be as much as a transient object inconsistency,
 		// and nonetheless referring to a mistyped variant's object member would not
 		// constitute an UB
 		assert(type_id > TypeIds::PrimitiveMaxId || var.type_id == type_id);
@@ -732,28 +733,63 @@ template<TypeId id, class Ref> constexpr decltype(auto) View(Ref &var) noexcept 
 template<TypeId type_id> using VarView = VariantView<type_id, Variant &>;
 template<TypeId type_id> using CVarView = VariantView<type_id, Variant const &>;
 
+template<TypeId id, class PrimitiveRef> struct VariantView<id, PrimitiveRef, Primitive>
+{
+	static_assert(id <= TypeIds::PrimitiveMaxId, "type_id is too large for Primitive types");
+
+	static constexpr TypeId type_id = id;
+	using type = typename IdToType<type_id>::type;
+	using storage_type = typename IdToType<type_id>::storage_type;
+
+	constexpr PrimitiveView(PrimitiveRef &primitive) noexcept: primitive(primitive) {}
+
+	constexpr auto Get() const {
+		assert(primitive.type_id == type_id);
+		return primitive.Get<type>();
+	}
+
+	constexpr void Set(type T) {
+		primitive.Set(T);
+	}
+
+	constexpr decltype(auto) Ref() {
+		return primitive.Ref<type>();
+	}
+
+	constexpr decltype(auto) CRef() const {
+		return primitive.CRef<type>();
+	}
+
+	PrimitiveRef &primitive;
+};
+
 namespace detail_
 {
 
-template<TypeId type_id> struct IdToType: type_util::Box<Object> {};
+template<class T, class ST = T> struct DualBox {
+	using type = T;
+	using storage_type = ST;
+};
+
+template<TypeId type_id> struct IdToType: DualBox<Object> {};
 template<TypeId type_id> using IdToTypeT = typename IdToType<type_id>::type;
 
-template<> struct IdToType<TypeIds::Void>: type_util::Box<void> {};
-template<> struct IdToType<TypeIds::Bool>: type_util::Box<bool> {};
-template<> struct IdToType<TypeIds::Int8>: type_util::Box<int8_t> {};
-template<> struct IdToType<TypeIds::Int8>: type_util::Box<int8_t> {};
-template<> struct IdToType<TypeIds::Int16>: type_util::Box<int16_t> {};
-template<> struct IdToType<TypeIds::Int16>: type_util::Box<int16_t> {};
-template<> struct IdToType<TypeIds::Int32>: type_util::Box<int32_t> {};
-template<> struct IdToType<TypeIds::Int32>: type_util::Box<int32_t> {};
-template<> struct IdToType<TypeIds::Int64>: type_util::Box<int64_t> {};
-template<> struct IdToType<TypeIds::Int64>: type_util::Box<int64_t> {};
-template<> struct IdToType<TypeIds::Float>: type_util::Box<float> {};
-template<> struct IdToType<TypeIds::Float>: type_util::Box<double> {};
-template<> struct IdToType<TypeIds::Fixed32>: type_util::Box<fixed_point::fp32_t> {};
-template<> struct IdToType<TypeIds::Fixed64>: type_util::Box<fixed_point::fp64_t> {};
-template<> struct IdToType<TypeIds::String>: type_util::Box<String> {};
-template<> struct IdToType<TypeIds::Address>: type_util::Box<Address> {};
+template<> struct IdToType<TypeIds::Void>: DualBox<void> {};
+template<> struct IdToType<TypeIds::Bool>: DualBox<bool, uint8_t> {};
+template<> struct IdToType<TypeIds::Int8>: DualBox<int8_t> {};
+template<> struct IdToType<TypeIds::UInt8>: DualBox<uint8_t> {};
+template<> struct IdToType<TypeIds::Int16>: DualBox<int16_t> {};
+template<> struct IdToType<TypeIds::UInt16>: DualBox<uint16_t> {};
+template<> struct IdToType<TypeIds::Int32>: DualBox<int32_t> {};
+template<> struct IdToType<TypeIds::UInt32>: DualBox<uint32_t> {};
+template<> struct IdToType<TypeIds::Int64>: DualBox<int64_t> {};
+template<> struct IdToType<TypeIds::UInt64>: DualBox<uint64_t> {};
+template<> struct IdToType<TypeIds::Float>: DualBox<float> {};
+template<> struct IdToType<TypeIds::Float>: DualBox<double> {};
+template<> struct IdToType<TypeIds::Fixed32>: DualBox<fixed_point::fp32_t> {};
+template<> struct IdToType<TypeIds::Fixed64>: DualBox<fixed_point::fp64_t> {};
+template<> struct IdToType<TypeIds::String>: DualBox<String> {};
+template<> struct IdToType<TypeIds::Address>: DualBox<Address> {};
 
 template<class T> struct TypeToId: std::integral_constant<TypeId, TypeIds::NumReserved> {};
 template<class T> static constexpr auto TypeToIdV = TypeToId<T>::value;
@@ -782,10 +818,10 @@ template<class Seq> static constexpr auto CarV = Car<Seq>::value;
 
 template<TypeId car, TypeId... cdr> struct Car<TypeIdSeq<car, cdr...>>: std::integral_constant<TypeId, car> {};
 
-template<class F, class RV, TypeId... type_ids> constexpr decltype(auto) SeqAccumulate(F &&f, RV init, TypeIdSeq<type_ids...>)
-{
-	return value_util::LeftAccumulate(std::forward<F>(f), init, type_ids...);
-}
+template<TypeId car, class Cdr> struct Cons;
+template<TypeId car, class Cdr> using ConsT = typename Cons<car, Cdr>::type;
+
+template<TypeId car, TypeId... cdr> struct Cons<car, TypeIdSeq<cdr...>>: type_util::Box<TypeIdSeq<car, cdr...>> {};
 
 template<class F, class... Variants>
 constexpr decltype(auto) ApplyFunctor(TypeIdSeq<>, TypeId /*unused*/, F &&f, Variants &&...variants)
@@ -1223,12 +1259,18 @@ template<class F, class VariantsPack, TypeId example_id> using InvokeResultT = t
 template<class F, class... Variants, TypeId example_id>
 struct InvokeResult<F, value_util::ArgSet<Variants...>, example_id>: type_util::InvokeResult<F, VariantView<example_id, Variants>...> {};
 
+template<class VariantsPack, class F>
+constexpr DefaultSlot(F &&f)
+{
+	return value_util::Slot<VariantsPack>(std::forward<F>(f));
+}
+
 template<class F, class VariantsPack, TypeIdSeq for_example>
 static constexpr decltype(auto) WithAddedDefault(F &&f)
 {
 	using Default = InvokeResultT<F, VariantsPack, CarV<for_example>>;
 	return value_util::Slots(std::forward<F>(f),
-				 value_util::Slot<VariantsPack>(value_util::NoOp<Default>{}));
+				 DefaultSlot<VariantsPack>(value_util::NoOp<Default>{}));
 }
 
 template<class F, class... Variants>
@@ -1242,34 +1284,62 @@ public:
 
 template<class F, class... Variants> static constexpr auto HasDefaultV = HasDefault<F, Variants...>::value;
 
-template<class F, class... Variants>
-static constexpr std::enable_if_t<HasDefaultV<F, Variants...>, F &&> WithDefault(F &&f, Variants &&.../*unused*/)
+template<class F, class... Variants, class TypeIds>
+static constexpr std::enable_if_t<HasDefaultV<F, Variants...>, F &&> WithDefault(F &&f, Variants &&.../*unused*/, TypeIds)
 {
 	return std::forward<F>(f);
 }
 
-template<class F, class... Variants>
-static constexpr std::enable_if_t<!HasDefaultV<F, Variants...>, F &&> WithDefault(F &&f, Variants &&.../*unused*/)
+template<class F, class... Variants, class TypeIds>
+static constexpr std::enable_if_t<!HasDefaultV<F, Variants...>, F &&> WithDefault(F &&f, Variants &&.../*unused*/, TypeIds)
 {
-	return WithAddedDefault(std::forward<F>(f));
+	return WithAddedDefault<F, value_util::ArgSet<Variants>, TypeIds>(std::forward<F>(f));
+}
+
+template<class F, TypeId... type_ids>
+constexpr auto VariantSlot(F &&f, TypeIdSeq<type_ids...>)
+{
+	return value_util::Slot<IdToType<type_ids>...>(std::forward<F>(f));
 }
 
 }
 
 template<TypeId... type_ids> using TypeIdSeq = detail_::TypeIdSeq<type_ids...>;
 
-template<class... IdSets, class F, class... Variants> constexpr ApplyFunctor(TypeId type_id, F &&f, Variants &&...variants)
+template<class... IdSets, class F, class... Variants> constexpr decltype(auto) ApplyFunctor(TypeId type_id, F &&f, Variants &&...variants)
 {
-	using IdSet = type_util::seq::ConcatT<IdSets...>;
-	static constexpr auto MaxId = type_util::seq::MaxV<IdSet>;
-	static constexpr auto elder_bit = sizeof(uint64_t) * 8;
+	using Ids = type_util::seq::ConcatT<Idss...>;
+	return  detail_::ApplyFunctor<Ids>(type_id,
+				     detail_::WithDefault(std::forward<F>(f), std::forward<Variants>(variants)..., Ids{}),
+				     std::forward<Variants>(variants)...);
+}
 
-	static_assert(MaxId < elder_bit, "TypeId is too large currently");
+using SignedIntTypeIds = TypeIdSeq<TypeIds::Int8, TypeIds::Int16, TypeIds::Int32, TypeIds::Int64>;
+using UnsignedIntTypeIds = TypeIdSeq<TypeIds::UInt8, TypeIds::UInt16, TypeIds::UInt32, TypeIds::UInt64>;
+using IntTypeIds = type_util::seq::Concat<SignedIntTypeIds, UnsignedIntTypeIds>;
 
-	static constexpr uint64_t mask = detail_::SeqAccumulate([](uint64_t accum, auto type_index) { return accum | 1ull << type_index; }, 0ull, IdSet{});
-	static constexpr std::bitset<static_cast<std::size_t>(MaxId)> type_id_filter(mask);
+using FloatTypeIds = TypeIdSeq<TypeIds::Float32, TypeIds::Float64>;
+using FixedTypeIds = TypeIdSeq<TypeIds::Fixed32, TypeIds::Fixed64>;
 
-	if(
+using NumericTypeIds = type_util::seq::Concat<IntTypeIds, FloatTypeIds, FixedTypeIds>;
+
+using PrimitiveTypeIds = detail_::ConsT<TypeIds::Bool, NumericTypeIds>;
+
+using BuiltinPtrTypeIds = TypeIdSeq<TypeIds::String, TypeIds::Address, TypeIds::Fixed128>;
+
+using BuiltinTypeIds = type_util::seq::Concat<PrimitiveTypeIds, BuiltinPtrTypeIds>;
+
+template<class... IdSets, class F>
+constexpr auto VariantSlot(F &&f)
+{
+  using Ids = type_util::seq::Concat<IdSets...>;
+  return detail_::VariantSlot(std::forward<F>(f), Ids{});
+}
+
+template<class F>
+constexpr auto DefaultSlot(F &&f)
+{
+  value_util::Slot<Variant, const Variant>(std::forward<F>(f));
 }
 
 struct TemplateParameter1 : Variant
@@ -1346,6 +1416,7 @@ public:
     if (!ApplyFunctor<PrimitiveTypeIds>(variant.type_id,
 					VariantSlot<>([](auto &&var) {
 						map.ExpectKeyGetValue(PRIMITIVE, var.Ref());
+						return true;
 					}),
 					variant))
     {

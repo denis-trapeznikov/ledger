@@ -129,6 +129,10 @@ template<class A, class B> struct Min<A, B>
 
 namespace seq {
 
+template<class F, class Sequence> struct LeftAccumulate;
+
+template<class F, template<class T, T...> class Seq, class T, T... seq> struct LeftAccumulatex<F, Seq<T, seq...>>: type_util::LeftAccumulate<F, Seq<T, seq>...> {};
+
 template<class... Seqs> struct Concat;
 template<class... Seqs> using ConcatT = typename Concat<Seqs...>::type;
 
@@ -139,10 +143,6 @@ struct Concat<IntegerSequence<T, seq1...>, IntegerSequence<T, seq2...>>: Box<Int
 
 template<class T, template<T...> class Sequence, T... seq1, T... seq2>
 struct Concat<Sequence<seq1...>, Sequence<seq2...>>: Box<Sequence<seq1..., seq2...>> {};
-
-template<class F, class Sequence> struct LeftAccumulate;
-
-template<class F, template<class T, T...> class Seq, class T, T... seq> struct LeftAccumulatex<F, Seq<T, seq...>>: type_util::LeftAccumulate<F, Seq<T, seq>...> {};
 
 template<class Sequence> using Max = LeftAccumulate<type_util::Max, Sequence>;
 template<class Sequence> static constexpr auto MaxV = Max<Sequence>::value;

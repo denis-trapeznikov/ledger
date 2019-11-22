@@ -2016,64 +2016,17 @@ bool Generator::ConstantComparator::operator()(Variant const &lhs, Variant const
   {
     return false;
   }
-  switch (lhs.type_id)
-  {
-  case TypeIds::Int8:
-  {
-    return lhs.primitive.i8 < rhs.primitive.i8;
-  }
-  case TypeIds::UInt8:
-  {
-    return lhs.primitive.ui8 < rhs.primitive.ui8;
-  }
-  case TypeIds::Int16:
-  {
-    return lhs.primitive.i16 < rhs.primitive.i16;
-  }
-  case TypeIds::UInt16:
-  {
-    return lhs.primitive.ui16 < rhs.primitive.ui16;
-  }
-  case TypeIds::Int32:
-  {
-    return lhs.primitive.i32 < rhs.primitive.i32;
-  }
-  case TypeIds::UInt32:
-  {
-    return lhs.primitive.ui32 < rhs.primitive.ui32;
-  }
-  case TypeIds::Int64:
-  {
-    return lhs.primitive.i64 < rhs.primitive.i64;
-  }
-  case TypeIds::UInt64:
-  {
-    return lhs.primitive.ui64 < rhs.primitive.ui64;
-  }
-  case TypeIds::Float32:
-  {
-    return lhs.primitive.f32 < rhs.primitive.f32;
-  }
-  case TypeIds::Float64:
-  {
-    return lhs.primitive.f64 < rhs.primitive.f64;
-  }
-  case TypeIds::Fixed32:
-  {
-    return fixed_point::fp32_t::FromBase(lhs.primitive.i32) <
-           fixed_point::fp32_t::FromBase(rhs.primitive.i32);
-  }
-  case TypeIds::Fixed64:
-  {
-    return fixed_point::fp64_t::FromBase(lhs.primitive.i64) <
-           fixed_point::fp64_t::FromBase(rhs.primitive.i64);
-  }
-  default:
-  {
-    assert(false);
-    return false;
-  }
-  }  // switch
+  return ApplyFunctor<NumericTypeIds>(
+	  lhs.type_id,
+	  value_util::Slots(
+		  VariantSlot<NumericTypeIds>([](auto &&lhs, auto &&rhs) {
+			  return lhs.Get() < rhs.Get();
+		  }),
+		  value_util::DefaultSlot([](auto &&/*unused*/, auto &&/*unused*/) {
+			  assert(false);
+			  return false;
+		  })),
+	  lhs, rhs);
 }
 
 bool Generator::LargeConstantComparator::operator()(Executable::LargeConstant const &lhs,
