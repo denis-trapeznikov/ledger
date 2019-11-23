@@ -351,6 +351,25 @@ Ptr<IState> IState::ConstructorFromAddress(VM *vm, TypeId type_id, Ptr<Address> 
 Ptr<IState> IState::ConstructIntrinsic(VM *vm, TypeId type_id, TypeId template_param_type_id,
                                        Ptr<String> const &name)
 {
+  return ApplyFunctor<TypeIdSeq<TypeIds::Unknown, TypeIds::Null, TypeIds::Void>, BuiltinTypeIds>(
+          template_param_type_id,
+          value_util::Slots(
+                  VariantSlot<TypeIds::Uknown>([vm, type_id, name](auto type_view) {
+			  using TypeView = decltype(type_view);
+			  using template_param_type_id = typename TypeView::type_id;
+
+			  return StateFactory<Unknown>{}(vm, type_id, template_param_type_id, name);
+		  }),
+                  VariantSlot<TypeIdSeq<TypeIds::Null, TypeIds::Void>, BuiltinTypeIds>([vm, type_id, name](auto type_view) {
+                          using TypeView = decltype(type_view);
+			  using template_param_type_id = typename TypeView::type_id;
+
+                          return StateFactory<TypeView::storage_type>{}(vm, type_id, template_param_type_id, name);
+                  }),
+                  DefaultSlot([vm, type_id, template_param_type_id, name]() {
+			  return StateFactory<Object>(vm, type_id, template_param_type_id, name);
+		  })));
+
   return TypeIdAsCanonicalType<StateFactory>(template_param_type_id, vm, type_id,
                                              template_param_type_id, name);
 }

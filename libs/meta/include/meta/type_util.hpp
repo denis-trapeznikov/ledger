@@ -64,7 +64,7 @@ template<template<class...> class StlOperator> using LiftStlArithmetic = LiftAri
 
 
 template<class... Ts>
-using Conjunction = LeftAccumulate<LiftStlArithmetic<std::logical_and>::template type, std::true_type, Ts...>;
+using Conjunction = LeftAccumulateT<LiftStlArithmetic<std::logical_and>::template type, std::true_type, Ts...>;
 
 template <typename... Ts>
 static constexpr auto ConjunctionV = Conjunction<Ts...>::value;
@@ -77,7 +77,7 @@ template <template <typename...> class F, typename... Ts>
 static constexpr auto AllV = All<F, Ts...>::value;
 
 template <typename... Ts>
-using Disjunction = LeftAccumulate<LiftStlArithmetic<std::logical_or>::template type, std::false_type, Ts...>;
+using Disjunction = LeftAccumulateT<LiftStlArithmetic<std::logical_or>::template type, std::false_type, Ts...>;
 
 template <typename... Ts>
 static constexpr auto DisjunctionV = Disjunction<Ts...>::value;

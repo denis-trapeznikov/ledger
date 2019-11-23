@@ -2022,7 +2022,7 @@ bool Generator::ConstantComparator::operator()(Variant const &lhs, Variant const
 		  VariantSlot<NumericTypeIds>([](auto &&lhs, auto &&rhs) {
 			  return lhs.Get() < rhs.Get();
 		  }),
-		  value_util::DefaultSlot([](auto &&/*unused*/, auto &&/*unused*/) {
+		  DefaultSlot([](auto &&/*unused*/, auto &&/*unused*/) {
 			  assert(false);
 			  return false;
 		  })),

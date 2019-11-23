@@ -413,20 +413,5 @@ bool operator!=(std::nullptr_t /* lhs */, Ptr<R> const &rhs) noexcept
 
 class Unknown;
 
-template <template <typename T, typename... Args> class Functor, typename... Args>
-auto TypeIdAsCanonicalType(TypeId const type_id, Args &&... args)
-{
-  return ApplyFunctor<TypeIdSeq<TypeIds::Unknown, TypeIds::Null, TypeIds::Void>, BuiltinTypeIds>(
-	  type_id,
-	  value_util::Slots(
-		  VariantSlot<TypeIds::Uknown>([&args...](auto /*unused*/) { return Functor<Unknown>{}(std::forward<Args>(args)...); }),
-		  VariantSlot<TypeIdSeq<TypeIds::Null, TypeIds::Void>, BuiltinTypeIds>([&args...](auto type_view) {
-			  using TypeView = decltype(type_view);
-
-			  return Functor<TypeView::storage_type>{}(std::forward<Args>(args)...);
-		  }),
-		  [&args...]() { return Functor<Object>(std::forward<Args>(args)...); }));
-}
-
 }  // namespace vm
 }  // namespace fetch

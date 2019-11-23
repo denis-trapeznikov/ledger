@@ -41,10 +41,10 @@ To Cast(Variant const &from)
 {
   return ApplyFunctor<PrimitiveTypeIds>(from.type_id,
 					value_util::Slots(
-						VariantSlot<>([](auto &&var) {
+						VariantSlot<PrimitiveTypeIds>([](auto &&var) {
 							return static_cast<To>(var.Get());
 						}),
-						Slot<Variant>([](auto &&/*unused*/) {
+						DefaultSlot([](Variant const &/*unused*/) {
 							// Not a primitive
 							assert(false);
 							return T{};

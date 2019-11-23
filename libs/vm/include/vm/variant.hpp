@@ -692,6 +692,24 @@ struct Variant
 };
 using VariantArray = std::vector<Variant>;
 
+template<TypeId... type_ids> using TypeIdSeq = std::integer_sequence<TypeId, type_ids...>;
+
+using SignedIntTypeIds = TypeIdSeq<TypeIds::Int8, TypeIds::Int16, TypeIds::Int32, TypeIds::Int64>;
+using UnsignedIntTypeIds = TypeIdSeq<TypeIds::UInt8, TypeIds::UInt16, TypeIds::UInt32, TypeIds::UInt64>;
+using IntTypeIds = type_util::seq::Concat<SignedIntTypeIds, UnsignedIntTypeIds>;
+
+using FloatTypeIds = TypeIdSeq<TypeIds::Float32, TypeIds::Float64>;
+using FixedTypeIds = TypeIdSeq<TypeIds::Fixed32, TypeIds::Fixed64>;
+
+using NumericTypeIds = type_util::seq::Concat<IntTypeIds, FloatTypeIds, FixedTypeIds>;
+
+using PrimitiveTypeIds = detail_::ConsT<TypeIds::Bool, NumericTypeIds>;
+
+using BuiltinPtrTypeIds = TypeIdSeq<TypeIds::String, TypeIds::Address, TypeIds::Fixed128>;
+
+using BuiltinTypeIds = type_util::seq::Concat<PrimitiveTypeIds, BuiltinPtrTypeIds>;
+
+
 namespace detail_
 {
 
@@ -722,22 +740,6 @@ template<> struct TypeIdTraits<TypeIds::String>: DoubleBox<String, Ptr<String>> 
 template<> struct TypeIdTraits<TypeIds::Address>: DoubleBox<Address, Ptr<Address>> {};
 
 }
-
-using SignedIntTypeIds = TypeIdSeq<TypeIds::Int8, TypeIds::Int16, TypeIds::Int32, TypeIds::Int64>;
-using UnsignedIntTypeIds = TypeIdSeq<TypeIds::UInt8, TypeIds::UInt16, TypeIds::UInt32, TypeIds::UInt64>;
-using IntTypeIds = type_util::seq::Concat<SignedIntTypeIds, UnsignedIntTypeIds>;
-
-using FloatTypeIds = TypeIdSeq<TypeIds::Float32, TypeIds::Float64>;
-using FixedTypeIds = TypeIdSeq<TypeIds::Fixed32, TypeIds::Fixed64>;
-
-using NumericTypeIds = type_util::seq::Concat<IntTypeIds, FloatTypeIds, FixedTypeIds>;
-
-using PrimitiveTypeIds = detail_::ConsT<TypeIds::Bool, NumericTypeIds>;
-
-using BuiltinPtrTypeIds = TypeIdSeq<TypeIds::String, TypeIds::Address, TypeIds::Fixed128>;
-
-using BuiltinTypeIds = type_util::seq::Concat<PrimitiveTypeIds, BuiltinPtrTypeIds>;
-
 
 template<TypeId id, class VariantRef, class = std::decay_t<VariantRef>> struct VariantView: detail_::TypeIdTraits<id>
 {
@@ -822,8 +824,6 @@ template<TypeId id> struct VariantView<id, void, void>: detail_::TypeIdTraits<id
 
 namespace detail_
 {
-
-template<TypeId... type_ids> using TypeIdSeq = std::integer_sequence<TypeId, type_ids...>;
 
 template<class Seq> struct Car;
 template<class Seq> static constexpr auto CarV = Car<Seq>::value;
@@ -1338,10 +1338,40 @@ static constexpr std::enable_if_t<!HasDefaultV<F, Variants...>, F &&> WithDefaul
 	return WithAddedDefault<F, value_util::ArgSet<Variants...>, TypeIds>(std::forward<F>(f));
 }
 
-template<TypeId... type_ids, class F>
-constexpr auto VariantSlot(TypeIdSeq<type_ids...> /*unused*/, F &&f)
+template<TypeId type_id, class... VariantRefs> using VariantArgSet = std::conditional_t<sizeof...(VariantRefs) == 0,
+	value_util::ArgSet<VariantView<type_id, void>>,
+	value_util::ArgSet<VariantView<type_id, VariantRefs>...>>;
+
+template<class F, TypeId... type_ids>
+class VariantSlotType {
+	F &&f_;
+public:
+	VariantSlot(F &&f_): f_(std::forward<F>(f_)) {}
+
+	template<class F, class VariantRefs...> static constexpr auto Impl(VariantRefs &&.../*unused*/)
+	{
+		return value_util::Slot<VariantArgSet<type_ids, VariantRefs...>...>(std::forward<F>(f_));
+	}
+};
+template<TypeId... type_ids, class F> constexpr auto VariantSlot(TypeIdSeq<type_ids...>, F &&f)
 {
-	return value_util::Slot<TypeIdTraits<type_ids>...>(std::forward<F>(f));
+	return VariantSlotType<F, type_ids...>(std::forward<F>(f));
+}
+
+template<class F>
+class DefaultSlotType {
+	F &&f_;
+public:
+	VariantSlot(F &&f_): f_(std::forward<F>(f_)) {}
+
+	template<class VariantRefs....> static constexpr auto Impl(VariantRefs &&.../*unused*/)
+	{
+		return value_util::Slot<value_util::ArgSet<VariantRefs...>>(std::forward<F>(f_));
+	}
+};
+template<class F> constexpr auto DefaultSlot(F &&f)
+{
+	return DefaultSlotType<F>(std::forward<F>(f));
 }
 
 }
@@ -1350,9 +1380,10 @@ template<TypeId... type_ids> using TypeIdSeq = detail_::TypeIdSeq<type_ids...>;
 
 template<class... IdSets, class F, class... Variants> constexpr decltype(auto) ApplyFunctor(TypeId type_id, F &&f, Variants &&...variants)
 {
-	using Ids = type_util::seq::ConcatT<Idss...>;
-	return  detail_::ApplyFunctor<Ids>(type_id,
-				     detail_::WithDefault(std::forward<F>(f), std::forward<Variants>(variants)..., Ids{}),
+	using Ids = type_util::seq::ConcatT<IdSets...>;
+
+	return  detail_::ApplyFunctor(Ids{}, type_id,
+				     detail_::WithDefault(f.Impl<Variants>(), std::forward<Variants>(variants)..., Ids{}),
 				     std::forward<Variants>(variants)...);
 }
 
@@ -1368,13 +1399,13 @@ template<class... IdSets, class F>
 constexpr auto VariantSlot(F &&f)
 {
   using Ids = type_util::seq::Concat<IdSets...>;
-  return detail_::VariantSlot(std::forward<F>(f), Ids{});
+  return detail_::VariantSlot(Ids{}, std::forward<F>(f));
 }
 
 template<class F>
 constexpr auto DefaultSlot(F &&f)
 {
-  value_util::Slot<Variant, const Variant>(std::forward<F>(f));
+  return detail_::DefaultSlot(std::forward<F>(f)):
 }
 
 struct TemplateParameter1 : Variant
